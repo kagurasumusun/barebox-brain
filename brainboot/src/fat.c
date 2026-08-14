@@ -115,6 +115,8 @@ static int parse_bpb(struct fat_fs *fs, const u8 *s, u32 base_lba)
     fs->sectors_per_cluster = spc;
     fs->fat_size = fatsz;
     fs->root_entries = rootent;
+    fs->reserved = resv;
+    fs->nfats = nfats;
     fs->part_lba = base_lba;
     fs->fat_lba = base_lba + resv;
     fs->root_lba = fs->fat_lba + nfats * fatsz;
@@ -165,7 +167,7 @@ int fat_mount(struct fat_fs *fs, struct mmc_dev *dev, u32 hint_lba)
     return -3;
 }
 
-static int walk_dir_sector(struct fat_fs *fs, const u8 *sec,
+static int walk_dir_sector(struct fat_fs *fs, const u8 *sec, u32 seclba,
                            const char *want, struct fat_file *out,
                            void (*cb)(const struct fat_file *f, void *ctx),
                            void *ctx)
@@ -184,6 +186,8 @@ static int walk_dir_sector(struct fat_fs *fs, const u8 *sec,
         f.attr = d[11];
         f.first_cluster = r16(d + 26) | ((u32)r16(d + 20) << 16);
         f.size = r32(d + 28);
+        f.dir_lba = seclba;
+        f.dir_off = (u32)i * 32;
         if (cb)
             cb(&f, ctx);
         if (want && strcmp(f.name, want) == 0) {
@@ -205,7 +209,7 @@ static int walk_root(struct fat_fs *fs, const char *want, struct fat_file *out,
             int r;
             if (mmc_read(fs->dev, fs->root_lba + i, 1, sec))
                 return -1;
-            r = walk_dir_sector(fs, sec, want, out, cb, ctx);
+            r = walk_dir_sector(fs, sec, fs->root_lba + i, want, out, cb, ctx);
             if (r)
                 return (r == 2) ? 0 : ((r == 1) ? -2 : r);
         }
@@ -219,7 +223,7 @@ static int walk_root(struct fat_fs *fs, const char *want, struct fat_file *out,
                 int r;
                 if (mmc_read(fs->dev, lba + s, 1, sec))
                     return -1;
-                r = walk_dir_sector(fs, sec, want, out, cb, ctx);
+                r = walk_dir_sector(fs, sec, lba + s, want, out, cb, ctx);
                 if (r == 2)
                     return 0;
                 if (r == 1)
@@ -274,4 +278,185 @@ int fat_read(struct fat_fs *fs, const struct fat_file *f, void *buf, u32 maxlen)
         clus = fat_next_cluster(fs, clus);
     }
     return (int)got;
+}
+
+static void w16(u8 *p, u16 v) { p[0] = (u8)v; p[1] = (u8)(v >> 8); }
+static void w32(u8 *p, u32 v)
+{
+    p[0] = (u8)v; p[1] = (u8)(v >> 8); p[2] = (u8)(v >> 16); p[3] = (u8)(v >> 24);
+}
+
+static int fat_poke16(struct fat_fs *fs, u32 clus, u16 val)
+{
+    u8 sec[512];
+    u32 off = clus * 2;
+    u32 lba = fs->fat_lba + off / 512;
+    u8 n;
+    if (mmc_read(fs->dev, lba, 1, sec))
+        return -1;
+    w16(sec + (off % 512), val);
+    for (n = 0; n < fs->nfats; n++) {
+        if (mmc_write(fs->dev, lba + n * fs->fat_size, 1, sec))
+            return -2;
+    }
+    return 0;
+}
+
+static u32 fat_alloc_cluster(struct fat_fs *fs)
+{
+    u32 c;
+    for (c = 2; c < fs->cluster_count + 2; c++) {
+        u32 nxt = fat_next_cluster(fs, c);
+        /* unused entries read as 0 */
+        u8 sec[512];
+        u32 off = c * 2;
+        u32 lba = fs->fat_lba + off / 512;
+        u16 ent;
+        if (fs->fat32)
+            return 0;
+        if (mmc_read(fs->dev, lba, 1, sec))
+            return 0;
+        ent = r16(sec + (off % 512));
+        (void)nxt;
+        if (ent == 0) {
+            if (fat_poke16(fs, c, 0xffff))
+                return 0;
+            return c;
+        }
+    }
+    return 0;
+}
+
+static void name_to_83(const char *in, u8 out[11])
+{
+    int i;
+    char n[13];
+    const char *dot;
+    memset(out, ' ', 11);
+    name83_normalize(in, n);
+    dot = n;
+    while (*dot && *dot != '.')
+        dot++;
+    for (i = 0; i < 8 && n[i] && n[i] != '.'; i++)
+        out[i] = (u8)n[i];
+    if (*dot == '.') {
+        dot++;
+        for (i = 0; i < 3 && dot[i]; i++)
+            out[8 + i] = (u8)dot[i];
+    }
+}
+
+static int fat_write_chain(struct fat_fs *fs, u32 first, const u8 *buf, u32 len)
+{
+    u32 clus = first;
+    u32 remain = len;
+    const u8 *p = buf;
+    u8 bounce[512];
+
+    while (remain && clus) {
+        u32 lba = clus_to_lba(fs, clus);
+        u32 s;
+        for (s = 0; s < fs->sectors_per_cluster && remain; s++) {
+            u32 chunk = remain < 512 ? remain : 512;
+            memset(bounce, 0, 512);
+            memcpy(bounce, p, chunk);
+            if (mmc_write(fs->dev, lba + s, 1, bounce))
+                return -1;
+            p += chunk;
+            remain -= chunk;
+        }
+        if (remain) {
+            u32 nxt = fat_next_cluster(fs, clus);
+            if (!nxt) {
+                nxt = fat_alloc_cluster(fs);
+                if (!nxt)
+                    return -2;
+                if (fat_poke16(fs, clus, (u16)nxt))
+                    return -3;
+            }
+            clus = nxt;
+        } else {
+            break;
+        }
+    }
+    return 0;
+}
+
+static int fat_update_dirent(struct fat_fs *fs, u32 lba, u32 off,
+                             u32 clus, u32 size)
+{
+    u8 sec[512];
+    if (mmc_read(fs->dev, lba, 1, sec))
+        return -1;
+    w16(sec + off + 26, (u16)clus);
+    w16(sec + off + 20, (u16)(clus >> 16));
+    w32(sec + off + 28, size);
+    return mmc_write(fs->dev, lba, 1, sec);
+}
+
+static int fat_create_dirent(struct fat_fs *fs, const u8 name83[11],
+                             u32 clus, u32 size, struct fat_file *out)
+{
+    u8 sec[512];
+    u32 nsec = ((fs->root_entries * 32) + 511) / 512;
+    u32 i, e;
+
+    if (fs->fat32)
+        return -1;
+    for (i = 0; i < nsec; i++) {
+        if (mmc_read(fs->dev, fs->root_lba + i, 1, sec))
+            return -2;
+        for (e = 0; e < 16; e++) {
+            u8 *d = sec + e * 32;
+            if (d[0] == 0 || d[0] == 0xe5) {
+                memset(d, 0, 32);
+                memcpy(d, name83, 11);
+                d[11] = 0x20;
+                w16(d + 26, (u16)clus);
+                w32(d + 28, size);
+                if (mmc_write(fs->dev, fs->root_lba + i, 1, sec))
+                    return -3;
+                if (out) {
+                    fat83_from_dirent(d, out->name);
+                    out->first_cluster = clus;
+                    out->size = size;
+                    out->attr = 0x20;
+                    out->dir_lba = fs->root_lba + i;
+                    out->dir_off = e * 32;
+                }
+                return 0;
+            }
+        }
+    }
+    return -4;
+}
+
+int fat_write(struct fat_fs *fs, const char *name83, const void *buf, u32 len)
+{
+    struct fat_file f;
+    u8 n83[11];
+    u32 clus;
+
+    if (!fs->ready || !buf)
+        return -1;
+    if (fs->fat32)
+        return -2;
+    name_to_83(name83, n83);
+
+    if (fat_find(fs, name83, &f) == 0 && f.dir_lba) {
+        if (fat_write_chain(fs, f.first_cluster, buf, len))
+            return -3;
+        if (fat_update_dirent(fs, f.dir_lba, f.dir_off, f.first_cluster, len))
+            return -4;
+        return 0;
+    }
+
+    clus = fat_alloc_cluster(fs);
+    if (!clus)
+        return -5;
+    if (fat_write_chain(fs, clus, buf, len))
+        return -6;
+    if (fat_create_dirent(fs, n83, clus, len, NULL))
+        return -7;
+    return 0;
 }

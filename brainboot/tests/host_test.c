@@ -4,6 +4,7 @@
  */
 #include "boot.h"
 #include "fat.h"
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -118,6 +119,15 @@ int mmc_read(struct mmc_dev *dev, u32 lba, u32 count, void *buf)
     return 0;
 }
 
+int mmc_write(struct mmc_dev *dev, u32 lba, u32 count, const void *buf)
+{
+    (void)dev;
+    if ((lba + count) * 512 > sizeof(disk))
+        return -1;
+    memcpy(disk + lba * 512, buf, count * 512);
+    return 0;
+}
+
 static void put16(u8 *p, u16 v) { p[0] = (u8)v; p[1] = (u8)(v >> 8); }
 static void put32(u8 *p, u32 v)
 {
@@ -174,6 +184,41 @@ static void test_fat16(void)
         EXPECT(fat_read(&fs, &f, buf, sizeof(buf)) == 5, "fat read len");
         EXPECT(memcmp(buf, "world", 5) == 0, "fat read data");
     }
+    EXPECT(fat_write(&fs, "HELLO.TXT", "WORLD", 5) == 0, "fat overwrite");
+    {
+        char buf[8];
+        memset(buf, 0, sizeof(buf));
+        EXPECT(fat_find(&fs, "HELLO.TXT", &f) == 0, "fat find after write");
+        EXPECT(fat_read(&fs, &f, buf, sizeof(buf)) == 5, "fat reread len");
+        EXPECT(memcmp(buf, "WORLD", 5) == 0, "fat overwrite data");
+    }
+    EXPECT(fat_write(&fs, "NEW.CFG", "hello-cfg", 9) == 0, "fat create");
+    {
+        char buf[16];
+        memset(buf, 0, sizeof(buf));
+        EXPECT(fat_find(&fs, "NEW.CFG", &f) == 0, "fat find created");
+        EXPECT(f.size == 9, "fat created size");
+        EXPECT(fat_read(&fs, &f, buf, sizeof(buf)) == 9, "fat created read");
+        EXPECT(memcmp(buf, "hello-cfg", 9) == 0, "fat created data");
+    }
+}
+
+static void test_config(void)
+{
+    struct bb_config c;
+    const char *txt =
+        "autoboot=12\n"
+        "default=linux\n"
+        "cmdline=console=ttyAMA0 root=/dev/sda2\n"
+        "zimage=ZIMAGE\n"
+        "dtb=IMX28-PWSH6.DTB\n";
+    char out[256];
+    EXPECT(bb_config_parse(txt, (u32)strlen(txt), &c) == 0, "cfg parse");
+    EXPECT(c.autoboot == 12, "cfg autoboot");
+    EXPECT(c.default_target == BB_DEFAULT_LINUX, "cfg default linux");
+    EXPECT(strcmp(c.cmdline, "console=ttyAMA0 root=/dev/sda2") == 0, "cfg cmdline");
+    EXPECT(bb_config_format(&c, out, sizeof(out)) > 0, "cfg format");
+    EXPECT(strstr(out, "default=linux") != NULL, "cfg format default");
 }
 
 int main(void)
@@ -185,6 +230,7 @@ int main(void)
     test_mbr();
     test_crc_sum();
     test_fat16();
+    test_config();
     printf("%s  fails=%d\n", fails ? "SOME TESTS FAILED" : "ALL HOST TESTS PASSED", fails);
     return fails ? 1 : 0;
 }

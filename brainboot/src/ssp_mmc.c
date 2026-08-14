@@ -408,6 +408,80 @@ int mmc_read(struct mmc_dev *dev, u32 lba, u32 count, void *buf)
     return 0;
 }
 
+static int ssp_write_blocks(struct mmc_dev *dev, u32 cmd, u32 arg,
+                            u32 blocks, const void *buf)
+{
+    u32 base = dev->base;
+    const u32 *p = buf;
+    u32 words = blocks * (MMC_BLOCK_SIZE / 4);
+    u32 put = 0;
+    u32 ctrl0, guard;
+
+    if (ssp_wait_not(base, SSP_STATUS_BUSY, 200000))
+        return -1;
+
+    writel(arg, base + HW_SSP_CMD1);
+    writel(SSP_CMD0_CMD(cmd), base + HW_SSP_CMD0);
+    writel(blocks * MMC_BLOCK_SIZE, base + HW_SSP_XFER_COUNT);
+    writel((blocks << 4) | 9u, base + HW_SSP_BLOCK_SIZE);
+
+    ctrl0 = SSP_CTRL0_ENABLE | SSP_CTRL0_GET_RESP | SSP_CTRL0_DATA_XFER |
+            SSP_CTRL0_WAIT_FOR_CMD | SSP_CTRL0_RUN;
+    writel(ctrl0, base + HW_SSP_CTRL0);
+
+    while (put < words) {
+        guard = 200000;
+        while ((readl(base + HW_SSP_STATUS) & SSP_STATUS_FIFO_FULL) && --guard) {
+            if (readl(base + HW_SSP_STATUS) &
+                (SSP_STATUS_TIMEOUT | SSP_STATUS_DATA_CRC_ERR | SSP_STATUS_RESP_TIMEOUT))
+                return -2;
+        }
+        if (!guard)
+            return -3;
+        writel(p[put++], base + HW_SSP_DATA);
+    }
+
+    guard = 400000;
+    while ((readl(base + HW_SSP_CTRL0) & SSP_CTRL0_RUN) && --guard)
+        ;
+    if (readl(base + HW_SSP_STATUS) & (SSP_STATUS_DATA_CRC_ERR | SSP_STATUS_TIMEOUT))
+        return -4;
+    return 0;
+}
+
+int mmc_write(struct mmc_dev *dev, u32 lba, u32 count, const void *buf)
+{
+    u32 addr;
+    u32 done = 0;
+    const u8 *p = buf;
+
+    if (!dev->ready || count == 0)
+        return -1;
+    addr = dev->is_hc ? lba : lba * MMC_BLOCK_SIZE;
+
+    while (done < count) {
+        u32 n = count - done;
+        int rc;
+        if (n > 16)
+            n = 16;
+        if (n == 1)
+            rc = ssp_write_blocks(dev, 24, addr, 1, p);
+        else
+            rc = ssp_write_blocks(dev, 25, addr, n, p);
+        if (rc) {
+            printf("mmc%u: write lba=%u n=%u err=%d\n",
+                   (unsigned)dev->port, lba + done, n, rc);
+            return rc;
+        }
+        if (n > 1)
+            ssp_cmd(dev, 12, 0, RESP_R1, NULL);
+        p += n * MMC_BLOCK_SIZE;
+        done += n;
+        addr += dev->is_hc ? n : n * MMC_BLOCK_SIZE;
+    }
+    return 0;
+}
+
 int mmc_read_extcsd(struct mmc_dev *dev, u8 ext[512])
 {
     if (dev->is_sd)
@@ -424,6 +498,11 @@ int mmc_init(struct mmc_dev *dev, enum mmc_port port)
     return -1;
 }
 int mmc_read(struct mmc_dev *dev, u32 lba, u32 count, void *buf)
+{
+    (void)dev; (void)lba; (void)count; (void)buf;
+    return -1;
+}
+int mmc_write(struct mmc_dev *dev, u32 lba, u32 count, const void *buf)
 {
     (void)dev; (void)lba; (void)count; (void)buf;
     return -1;

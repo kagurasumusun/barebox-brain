@@ -61,6 +61,10 @@ int strncmp(const char *a, const char *b, size_t n);
 char *strcpy(char *dst, const char *src);
 char *strncpy(char *dst, const char *src, size_t n);
 void strtoupper(char *s);
+char *strchr(const char *s, int c);
+void utoa_dec(u32 v, char *buf);
+void utoa_hex(u32 v, char *buf, int width);
+int  snprint(char *dst, u32 dstsz, const char *fmt, ...);
 
 u32 crc32_ieee(const u8 *data, u32 len);
 u16 sum16(const u8 *data, u32 len);

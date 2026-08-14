@@ -54,7 +54,8 @@ int  boot_wince_from_emmc(struct mmc_dev *emmc, u32 offset, u32 size_hint);
 int  boot_wince_from_mem(const u8 *buf, u32 len);
 int  boot_wince_from_sd(struct fat_fs *sd, const char *name);
 
-int  boot_linux_from_sd(struct fat_fs *sd, const char *zname, const char *dtbname);
+int  boot_linux_from_sd(struct fat_fs *sd, const char *zname,
+                        const char *dtbname, const char *cmdline);
 int  linux_prepare_atags(u32 atag_phys, const char *cmdline, u32 mem_base, u32 mem_size);
 int  zimage_probe(const u8 *buf, u32 len);
 int  dtb_probe(const u8 *buf, u32 len);

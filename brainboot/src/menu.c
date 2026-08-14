@@ -1,179 +1,360 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
+#include "ui.h"
 #include "board.h"
-#include "boot.h"
-#include "mmc.h"
-#include "fat.h"
-#include "lcd.h"
 #include "keyboard.h"
+#include "boot.h"
 
-struct menu_item {
-    const char *key;
-    const char *title;
-    int id;
-};
+#define ACT_WINCE     1
+#define ACT_LINUX     2
+#define ACT_DIAGOS    3
+#define ACT_SDEXE     4
+#define ACT_NK2       5
+#define ACT_POWEROFF  6
+#define ACT_REBOOT    7
+#define ACT_NONE      0
 
-enum {
-    ACT_WINCE = 1,
-    ACT_DIAGOS,
-    ACT_SD_EXE,
-    ACT_LINUX,
-    ACT_INFO,
-    ACT_MEMTEST,
-    ACT_REBOOT,
-    ACT_SHELL,
-};
-
-static const struct menu_item items[] = {
-    { "1", "WinCE  (eMMC NK @ 0x120000)",     ACT_WINCE },
-    { "2", "DiagOS (eMMC @ 0x4120000)",       ACT_DIAGOS },
-    { "3", "SD Card EXE (EDSH6EXE.BIN)",      ACT_SD_EXE },
-    { "4", "Linux  (SD zImage + DTB)",        ACT_LINUX },
-    { "5", "Hardware / DevInfo / BootConfig", ACT_INFO },
-    { "6", "DRAM walking-bit test (safe window)", ACT_MEMTEST },
-    { "7", "Reboot",                          ACT_REBOOT },
-};
-
-static void draw_menu(int sel, int remain)
+static int wait_key(int aborted)
 {
-    unsigned i;
-    u16 bg = RGB565(5, 8, 14);
-    u16 fg = RGB565(220, 230, 240);
-    u16 hi = RGB565(5, 8, 14);
-    u16 hb = RGB565(62, 224, 255);
-    char line[48];
-
-    lcd_rect(20, 40, LCD_WIDTH - 40, LCD_HEIGHT - 80, RGB565(8, 12, 22));
-    lcd_text(32, 52, "BRAINBOOT  " BOARD_NAME, hb, RGB565(8, 12, 22));
-    lcd_text(32, 66, "Linux / WinCE loader", RGB565(120, 140, 160), RGB565(8, 12, 22));
-
-    for (i = 0; i < ARRAY_SIZE(items); i++) {
-        int y = 96 + (int)i * 18;
-        if ((int)i == sel) {
-            lcd_rect(28, y - 2, LCD_WIDTH - 56, 16, hb);
-            lcd_text(40, y, items[i].title, hi, hb);
-        } else {
-            lcd_rect(28, y - 2, LCD_WIDTH - 56, 16, RGB565(8, 12, 22));
-            lcd_text(40, y, items[i].title, fg, RGB565(8, 12, 22));
-        }
-    }
-    if (remain >= 0) {
-        /* simple number print */
-        line[0] = 'A'; line[1] = 'u'; line[2] = 't'; line[3] = 'o';
-        line[4] = ' '; line[5] = 'i'; line[6] = 'n'; line[7] = ' ';
-        line[8] = (char)('0' + remain);
-        line[9] = 's'; line[10] = 0;
-        lcd_text(32, LCD_HEIGHT - 48, line, RGB565(180, 160, 80), bg);
-    } else {
-        lcd_rect(32, LCD_HEIGHT - 48, 200, 10, RGB565(8, 12, 22));
-    }
-    lcd_text(32, LCD_HEIGHT - 34, "Enter/1-7  Up/Down  Q=abort timer",
-             RGB565(90, 110, 130), bg);
-    lcd_flush();
+    return keyboard_get_timeout(aborted ? 60000 : 1000);
 }
 
-static void memtest_run(void)
+static int pick(int *sel, int n, int k)
 {
-    /* Safe window: 0x43000000 .. 0x44FFFFFF (32 MiB), away from us and FB. */
+    if (k == KEY_UP && *sel > 0)
+        (*sel)--;
+    else if (k == KEY_DOWN && *sel < n - 1)
+        (*sel)++;
+    else if (k >= 101 && k - 101 < n)
+        *sel = k - 101;
+    else if (k == KEY_ENTER)
+        return 1;
+    else if (k == KEY_ESC)
+        return -1;
+    return 0;
+}
+
+static void memtest_run(struct boot_ctx *ctx)
+{
     volatile u32 *p = (volatile u32 *)0x43000000u;
     u32 n = 0x02000000u / 4u;
     u32 i, errs = 0;
-    printf("memtest: walking 1s on 0x43000000-0x44ffffff (%u words)\n", n);
-    splash_banner("DRAM test running...");
-    for (i = 0; i < n; i += 17) { /* stride to finish in reasonable time */
-        u32 pat = 1u << (i & 31);
-        p[i] = pat;
-    }
+    char body[256];
+
+    ui_message(ctx, "DRAM walking-bit", "Testing 0x43000000-0x44FFFFFF ...");
+    printf("memtest: walking 1s (%u words, stride 17)\n", n);
+    for (i = 0; i < n; i += 17)
+        p[i] = 1u << (i & 31);
     for (i = 0; i < n; i += 17) {
         u32 pat = 1u << (i & 31);
-        if (p[i] != pat) {
-            if (errs < 8)
-                printf("  mismatch @%x wrote %x read %x\n",
-                       0x43000000u + i * 4, pat, p[i]);
+        if (p[i] != pat)
             errs++;
+    }
+    snprint(body, sizeof(body),
+            "Window : 0x43000000-0x44FFFFFF\nStride : 17 words\nErrors : %u\n\nENTER to return",
+            errs);
+    ui_message(ctx, errs ? "DRAM test FAILED" : "DRAM test passed", body);
+    printf("memtest: %u errors\n", errs);
+    while (keyboard_get_timeout(60000) != KEY_ENTER &&
+           keyboard_get_timeout(0) != KEY_ESC)
+        ;
+}
+
+static void show_storage(struct boot_ctx *ctx)
+{
+    char body[512];
+    char a[80], b[80];
+    a[0] = b[0] = 0;
+    if (ctx->emmc.ready)
+        snprint(a, sizeof(a), "eMMC %s mid=%x lba=%u %ubit",
+                ctx->emmc.cid.pnm, ctx->emmc.cid.mid,
+                ctx->emmc.capacity_lba, (unsigned)ctx->emmc.bus_width);
+    else
+        strncpy(a, "eMMC not ready", sizeof(a) - 1);
+    if (ctx->sd.ready)
+        snprint(b, sizeof(b), "SD   %s mid=%x lba=%u %ubit",
+                ctx->sd.cid.pnm, ctx->sd.cid.mid,
+                ctx->sd.capacity_lba, (unsigned)ctx->sd.bus_width);
+    else
+        strncpy(b, "SD not ready", sizeof(b) - 1);
+    snprint(body, sizeof(body),
+            "%s\n%s\nFAT %s part_lba=%u\nDevInfo %s ver=%u\nBootConfig flags=0x%x\nOCOTP_LOCK=0x%x\nPOWER_STS=0x%x\nCPU %u Hz\n\nENTER to return",
+            a, b,
+            ctx->sdfat.ready ? (ctx->sdfat.fat32 ? "32" : "16") : "none",
+            ctx->sdfat.part_lba,
+            ctx->di.valid ? ctx->di.model : "-",
+            ctx->di.valid ? ctx->di.version : 0,
+            ctx->bc.valid ? ctx->bc.flags : 0,
+            ctx->ocotp_lock, ctx->power_sts, ctx->cpu_hz);
+    ui_message(ctx, "Storage / SoC", body);
+    while (keyboard_get_timeout(60000) != KEY_ENTER)
+        if (keyboard_get_timeout(0) == KEY_ESC)
+            break;
+}
+
+struct file_acc {
+    struct fat_file f[16];
+    int n;
+};
+
+static void file_cb(const struct fat_file *f, void *ctx)
+{
+    struct file_acc *a = ctx;
+    if (a->n < 16)
+        a->f[a->n++] = *f;
+}
+
+static int file_browser(struct boot_ctx *ctx)
+{
+    struct file_acc acc;
+    const char *names[16];
+    char lines[16][20];
+    int sel = 0, i;
+    acc.n = 0;
+    if (!ctx->sdfat.ready) {
+        ui_message(ctx, "File browser", "SD FAT not mounted.\nENTER to return");
+        keyboard_get_timeout(60000);
+        return ACT_NONE;
+    }
+    fat_list(&ctx->sdfat, file_cb, &acc);
+    if (acc.n == 0) {
+        ui_message(ctx, "File browser", "Root is empty.\nENTER to return");
+        keyboard_get_timeout(60000);
+        return ACT_NONE;
+    }
+    for (i = 0; i < acc.n; i++) {
+        strncpy(lines[i], acc.f[i].name, 19);
+        names[i] = lines[i];
+    }
+    for (;;) {
+        char info[80];
+        snprint(info, sizeof(info), "%s  %u bytes  ENTER boots if image",
+                acc.f[sel].name, acc.f[sel].size);
+        ui_panel(ctx, "SD root", names, acc.n, sel, info);
+        {
+            int k = keyboard_get_timeout(60000);
+            int r = pick(&sel, acc.n, k);
+            if (r < 0)
+                return ACT_NONE;
+            if (r > 0)
+                return boot_wince_from_sd(&ctx->sdfat, acc.f[sel].name) ?
+                       ACT_NONE : ACT_NONE;
         }
     }
-    printf("memtest: %u errors in sampled words\n", errs);
 }
 
-static void show_info(struct mmc_dev *emmc, struct mmc_dev *sd,
-                      const struct boot_config *bc, const struct dev_info *di)
+static void kbd_test(struct boot_ctx *ctx)
 {
-    printf("---- board ----\n");
-    printf("  %s  internal %s / %s  fw %s\n",
-           BOARD_NAME, BOARD_INTERNAL_AA, BOARD_INTERNAL_SH, BOARD_VERSION);
-    printf("  chipid=0x%x  dram=128MiB @ 0x40000000\n", board_chipid());
-    printf("---- eMMC ----\n");
-    mmc_print_info(emmc);
-    printf("---- SD ----\n");
-    mmc_print_info(sd);
-    printf("---- DevInfo ----\n");
-    if (di->valid)
-        printf("  model='%s' ver=%u sum=%x\n", di->model, di->version, di->sum16);
-    else
-        printf("  invalid / missing\n");
-    printf("---- BootConfig ----\n");
-    if (bc->valid)
-        printf("  flags=0x%x devflags=0x%x model=%u\n",
-               bc->flags, bc->devflags, bc->model);
-    else
-        printf("  invalid / missing\n");
+    ui_message(ctx, "Keyboard test",
+               "Press keys. ESC exits.\nCodes: 1=Up 2=Down 3=Enter\n4=Esc 5=Left 6=Right");
+    for (;;) {
+        int k = keyboard_get_timeout(60000);
+        char line[48];
+        if (k == KEY_ESC)
+            return;
+        if (!k)
+            continue;
+        snprint(line, sizeof(line), "last key = %d    ESC to exit", k);
+        ui_message(ctx, "Keyboard test", line);
+    }
 }
 
-int menu_run(struct mmc_dev *emmc, struct mmc_dev *sd,
-             struct fat_fs *sdfat,
-             struct boot_config *bc, struct dev_info *di)
+static int diagnostics(struct boot_ctx *ctx)
+{
+    const char *items[] = {
+        "DRAM walking-bit test",
+        "Storage / SoC registers",
+        "SD file list / boot file",
+        "Keyboard matrix test",
+        "Back",
+    };
+    int sel = 0;
+    for (;;) {
+        ui_panel(ctx, "Diagnostics", items, 5, sel,
+                 "Probes only. No eMMC writes.");
+        {
+            int k = keyboard_get_timeout(60000);
+            int r = pick(&sel, 5, k);
+            if (r < 0 || (r > 0 && sel == 4))
+                return ACT_NONE;
+            if (r > 0) {
+                if (sel == 0) memtest_run(ctx);
+                else if (sel == 1) show_storage(ctx);
+                else if (sel == 2) file_browser(ctx);
+                else if (sel == 3) kbd_test(ctx);
+            }
+        }
+    }
+}
+
+static int bootcfg_editor(struct boot_ctx *ctx)
+{
+    const char *items[10];
+    char row[8][40];
+    int sel = 0, n;
+
+    for (;;) {
+        n = 0;
+        snprint(row[n], 40, "DiagBoot     %s",
+                (ctx->bc.flags & BOOTCFG_FLAG_DIAG) ? "ON" : "off");
+        items[n] = row[n]; n++;
+        snprint(row[n], 40, "CardBoot     %s",
+                (ctx->bc.flags & BOOTCFG_FLAG_CARDBOOT) ? "ON" : "off");
+        items[n] = row[n]; n++;
+        snprint(row[n], 40, "Engineer     %s",
+                (ctx->bc.flags & BOOTCFG_FLAG_ENGINEER) ? "ON" : "off");
+        items[n] = row[n]; n++;
+        snprint(row[n], 40, "DevMode      %s",
+                (ctx->bc.flags & BOOTCFG_FLAG_DEVMODE) ? "ON" : "off");
+        items[n] = row[n]; n++;
+        snprint(row[n], 40, "Autoboot     %u s", ctx->cfg.autoboot);
+        items[n] = row[n]; n++;
+        snprint(row[n], 40, "Default      %s", bb_default_name(ctx->cfg.default_target));
+        items[n] = row[n]; n++;
+        items[n++] = "Save BRAINBOO.CFG to SD";
+        items[n++] = "Write EDSH6CFG.BIN to SD";
+        items[n++] = "Back";
+
+        ui_panel(ctx, "Boot Configuration", items, n, sel,
+                 "ENTER toggles / saves.\nLeft/Right change numbers.\nStock checksum rule used.");
+        {
+            int k = keyboard_get_timeout(60000);
+            int r = pick(&sel, n, k);
+            if (r < 0 || (r > 0 && sel == n - 1))
+                return ACT_NONE;
+            if (k == KEY_LEFT || k == KEY_RIGHT) {
+                if (sel == 4) {
+                    if (k == KEY_LEFT && ctx->cfg.autoboot)
+                        ctx->cfg.autoboot--;
+                    if (k == KEY_RIGHT && ctx->cfg.autoboot < 30)
+                        ctx->cfg.autoboot++;
+                } else if (sel == 5) {
+                    if (k == KEY_RIGHT)
+                        ctx->cfg.default_target = (ctx->cfg.default_target + 1) % 5;
+                    else if (ctx->cfg.default_target)
+                        ctx->cfg.default_target--;
+                    else
+                        ctx->cfg.default_target = 4;
+                }
+            }
+            if (r > 0) {
+                if (sel == 0) ctx->bc.flags ^= BOOTCFG_FLAG_DIAG;
+                else if (sel == 1) ctx->bc.flags ^= BOOTCFG_FLAG_CARDBOOT;
+                else if (sel == 2) ctx->bc.flags ^= BOOTCFG_FLAG_ENGINEER;
+                else if (sel == 3) ctx->bc.flags ^= BOOTCFG_FLAG_DEVMODE;
+                else if (sel == 6) {
+                    int rc = bb_config_save(&ctx->sdfat, &ctx->cfg);
+                    ui_message(ctx, "Save BRAINBOO.CFG",
+                               rc ? "FAILED (SD/FAT write)" : "Wrote BRAINBOO.CFG");
+                    printf("save cfg rc=%d\n", rc);
+                    keyboard_get_timeout(4000);
+                } else if (sel == 7) {
+                    u8 sec[512];
+                    int rc;
+                    bootcfg_build(ctx->bc.flags, ctx->bc.devflags, ctx->bc.model, sec);
+                    rc = ctx->sdfat.ready ?
+                         fat_write(&ctx->sdfat, SD_BOOTCFG_NAME, sec, 512) : -1;
+                    ui_message(ctx, "Write EDSH6CFG.BIN",
+                               rc ? "FAILED" : "Wrote EDSH6CFG.BIN (ones-complement sum)");
+                    printf("save edsh6cfg rc=%d flags=0x%x\n", rc, ctx->bc.flags);
+                    keyboard_get_timeout(4000);
+                }
+            }
+        }
+    }
+}
+
+static int recovery(struct boot_ctx *ctx)
+{
+    const char *items[] = {
+        "Boot DiagOS (eMMC 0x4120000)",
+        "Boot EDSH6EXE.BIN from SD",
+        "Boot NK2 copy (eMMC 0x2120000)",
+        "Browse SD and boot a file",
+        "Back",
+    };
+    int sel = 0;
+    for (;;) {
+        ui_panel(ctx, "Recovery Mode", items, 5, sel,
+                 "Does not touch the SB partition.");
+        {
+            int k = keyboard_get_timeout(60000);
+            int r = pick(&sel, 5, k);
+            if (r < 0 || (r > 0 && sel == 4))
+                return ACT_NONE;
+            if (r > 0) {
+                if (sel == 0) return ACT_DIAGOS;
+                if (sel == 1) return ACT_SDEXE;
+                if (sel == 2) return ACT_NK2;
+                if (sel == 3) file_browser(ctx);
+            }
+        }
+    }
+}
+
+static const char *home_items[] = {
+    "Boot WinCE (Internal eMMC)",
+    "Boot Linux (SD Card)",
+    "Diagnostics",
+    "Boot Configuration",
+    "Recovery Mode",
+    "Power Off",
+};
+
+static const char *home_desc[] = {
+    "Start Windows CE from internal eMMC.",
+    "Load zImage + DTB from microSD.",
+    "Memory, storage, keyboard probes.",
+    "Flags, autoboot, save config.",
+    "DiagOS / SD EXE / NK2 / files.",
+    "SoC power-down (PWD).",
+};
+
+int menu_run(struct boot_ctx *ctx)
 {
     int sel = 0;
-    int remain = AUTOBOOT_SECONDS;
+    int remain = (int)ctx->cfg.autoboot;
     int aborted = 0;
-    int default_act = ACT_WINCE;
+    int def = ACT_WINCE;
 
-    if (bc->valid && (bc->flags & BOOTCFG_FLAG_DIAG))
-        default_act = ACT_DIAGOS;
-    /* pick default row */
-    {
-        unsigned i;
-        for (i = 0; i < ARRAY_SIZE(items); i++)
-            if (items[i].id == default_act)
-                sel = (int)i;
+    switch (ctx->cfg.default_target) {
+    case BB_DEFAULT_LINUX: def = ACT_LINUX; sel = 1; break;
+    case BB_DEFAULT_DIAG:  def = ACT_DIAGOS; break;
+    case BB_DEFAULT_SDEXE: def = ACT_SDEXE; break;
+    case BB_DEFAULT_NONE:  remain = -1; aborted = 1; break;
+    default: def = ACT_WINCE; sel = 0; break;
+    }
+    if (ctx->bc.valid && (ctx->bc.flags & BOOTCFG_FLAG_DIAG)) {
+        def = ACT_DIAGOS;
+        sel = 0;
     }
 
-    printf("\nbrainboot " BOARD_NAME " — keys: 1-7, w/s, Enter\n");
-    draw_menu(sel, remain);
+    printf("menu: autoboot=%d default=%s\n", remain, bb_default_name(ctx->cfg.default_target));
 
-    while (1) {
-        int k = keyboard_get_timeout(aborted ? 60000 : 1000);
-        if (!aborted && k == KEY_NONE) {
-            remain--;
-            if (remain < 0)
-                return default_act;
-            draw_menu(sel, remain);
-            printf("autoboot in %d\n", remain);
-            continue;
-        }
-        aborted = 1;
-        remain = -1;
-        if (k >= 101 && k <= 107)
-            return items[k - 101].id;
-        if (k == KEY_UP) {
-            if (sel > 0) sel--;
-            draw_menu(sel, remain);
-        } else if (k == KEY_DOWN) {
-            if (sel < (int)ARRAY_SIZE(items) - 1) sel++;
-            draw_menu(sel, remain);
-        } else if (k == KEY_ENTER) {
-            int act = items[sel].id;
-            if (act == ACT_INFO) {
-                show_info(emmc, sd, bc, di);
+    for (;;) {
+        ui_home(ctx, home_items, 6, sel, aborted ? -1 : remain, home_desc[sel]);
+        {
+            int k = wait_key(aborted);
+            int r;
+            if (!aborted && k == KEY_NONE) {
+                remain--;
+                if (remain < 0)
+                    return def;
                 continue;
             }
-            if (act == ACT_MEMTEST) {
-                memtest_run();
-                continue;
+            aborted = 1;
+            remain = -1;
+            r = pick(&sel, 6, k);
+            if (r > 0) {
+                int act = ACT_NONE;
+                if (sel == 0) return ACT_WINCE;
+                if (sel == 1) return ACT_LINUX;
+                if (sel == 2) act = diagnostics(ctx);
+                else if (sel == 3) act = bootcfg_editor(ctx);
+                else if (sel == 4) act = recovery(ctx);
+                else if (sel == 5) return ACT_POWEROFF;
+                if (act)
+                    return act;
             }
-            return act;
-        } else if (k == KEY_ESC) {
-            continue;
         }
     }
 }

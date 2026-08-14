@@ -50,6 +50,9 @@
 #define SD_ZIMAGE_NAME          "ZIMAGE"
 #define SD_DTB_NAME             "IMX28-PWSH6.DTB"
 #define SD_UIMAGE_NAME          "UIMAGE"
+#define SD_BBCONF_NAME          "BRAINBOO.CFG"
+
+#define BB_VERSION              "1.1.0"
 
 #define LCD_WIDTH               854
 #define LCD_HEIGHT              480
@@ -84,8 +87,15 @@
 
 void board_early_init(void);
 void board_reboot(void);
+void board_poweroff(void);
 void clock_init(void);
 void pinmux_init(void);
 u32  board_chipid(void);
+u32  board_cpu_hz(void);
+u32  board_ocotp_lock(void);
+u32  board_rtc_seconds(void);
+int  board_probe_ocram(void);
+int  board_probe_dram(void);
+u32  board_power_sts(void);
 
 #endif

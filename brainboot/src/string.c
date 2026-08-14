@@ -92,7 +92,92 @@ char *strncpy(char *dst, const char *src, size_t n)
         dst[i] = 0;
     return dst;
 }
+
+char *strchr(const char *s, int c)
+{
+    while (*s) {
+        if (*s == (char)c)
+            return (char *)s;
+        s++;
+    }
+    return (c == 0) ? (char *)s : NULL;
+}
 #endif
+
+void utoa_dec(u32 v, char *buf)
+{
+    char tmp[11];
+    int i = 0, j = 0;
+    if (v == 0) {
+        buf[0] = '0';
+        buf[1] = 0;
+        return;
+    }
+    while (v && i < 10) {
+        tmp[i++] = (char)('0' + (v % 10));
+        v /= 10;
+    }
+    while (i--)
+        buf[j++] = tmp[i];
+    buf[j] = 0;
+}
+
+void utoa_hex(u32 v, char *buf, int width)
+{
+    const char *h = "0123456789abcdef";
+    int i;
+    if (width < 1)
+        width = 1;
+    if (width > 8)
+        width = 8;
+    for (i = 0; i < width; i++)
+        buf[i] = h[(v >> ((width - 1 - i) * 4)) & 0xf];
+    buf[width] = 0;
+}
+
+int snprint(char *dst, u32 dstsz, const char *fmt, ...)
+{
+    va_list ap;
+    u32 n = 0;
+    if (!dst || dstsz == 0)
+        return 0;
+    va_start(ap, fmt);
+    while (*fmt && n + 1 < dstsz) {
+        if (*fmt != '%') {
+            dst[n++] = *fmt++;
+            continue;
+        }
+        fmt++;
+        if (*fmt == 's') {
+            const char *s = va_arg(ap, const char *);
+            if (!s)
+                s = "";
+            while (*s && n + 1 < dstsz)
+                dst[n++] = *s++;
+        } else if (*fmt == 'd' || *fmt == 'u') {
+            char tmp[12];
+            char *t;
+            utoa_dec(va_arg(ap, unsigned int), tmp);
+            t = tmp;
+            while (*t && n + 1 < dstsz)
+                dst[n++] = *t++;
+        } else if (*fmt == 'x') {
+            char tmp[9];
+            char *t;
+            utoa_hex(va_arg(ap, unsigned int), tmp, 8);
+            t = tmp;
+            while (*t && n + 1 < dstsz)
+                dst[n++] = *t++;
+        } else if (*fmt == '%') {
+            dst[n++] = '%';
+        }
+        if (*fmt)
+            fmt++;
+    }
+    va_end(ap);
+    dst[n] = 0;
+    return (int)n;
+}
 
 void strtoupper(char *s)
 {

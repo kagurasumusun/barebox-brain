@@ -208,6 +208,61 @@ void lcd_text(int x, int y, const char *s, u16 fg, u16 bg)
     }
 }
 
+void lcd_char_scaled(int x, int y, char c, u16 fg, u16 bg, int scale)
+{
+    int gx, gy, sx, sy;
+    const u8 *g;
+    if (scale < 1)
+        scale = 1;
+    if ((u8)c < 0x20 || (u8)c > 0x7f)
+        c = '?';
+    g = font8x8[(u8)c - 0x20];
+    for (gy = 0; gy < 8; gy++) {
+        u8 bits = g[gy];
+        for (gx = 0; gx < 8; gx++) {
+            u16 col = (bits & (0x80 >> gx)) ? fg : bg;
+            for (sy = 0; sy < scale; sy++)
+                for (sx = 0; sx < scale; sx++)
+                    lcd_pixel(x + gx * scale + sx, y + gy * scale + sy, col);
+        }
+    }
+}
+
+void lcd_text_scaled(int x, int y, const char *s, u16 fg, u16 bg, int scale)
+{
+    while (*s) {
+        lcd_char_scaled(x, y, *s++, fg, bg, scale);
+        x += 8 * scale;
+    }
+}
+
+void lcd_frame(int x, int y, int w, int h, u16 color)
+{
+    lcd_hline(x, y, w, color);
+    lcd_hline(x, y + h - 1, w, color);
+    lcd_vline(x, y, h, color);
+    lcd_vline(x + w - 1, y, h, color);
+}
+
+void lcd_rrect(int x, int y, int w, int h, u16 fill, u16 border)
+{
+    int r = 6;
+    int yy;
+    for (yy = 0; yy < h; yy++) {
+        int inset = 0;
+        if (yy < r)
+            inset = r - 1 - yy;
+        else if (yy >= h - r)
+            inset = yy - (h - r);
+        if (inset < 0)
+            inset = 0;
+        if (inset > r)
+            inset = r;
+        lcd_hline(x + inset, y + yy, w - 2 * inset, fill);
+    }
+    lcd_frame(x + 2, y + 2, w - 4, h - 4, border);
+}
+
 #else
 static int g_lcd_ok;
 void lcd_init(void) { g_lcd_ok = 0; }
@@ -218,6 +273,10 @@ void lcd_hline(int x, int y, int w, u16 color) { (void)x;(void)y;(void)w;(void)c
 void lcd_vline(int x, int y, int h, u16 color) { (void)x;(void)y;(void)h;(void)color; }
 void lcd_char(int x, int y, char c, u16 fg, u16 bg) { (void)x;(void)y;(void)c;(void)fg;(void)bg; }
 void lcd_text(int x, int y, const char *s, u16 fg, u16 bg) { (void)x;(void)y;(void)s;(void)fg;(void)bg; }
+void lcd_char_scaled(int x, int y, char c, u16 fg, u16 bg, int scale) { (void)x;(void)y;(void)c;(void)fg;(void)bg;(void)scale; }
+void lcd_text_scaled(int x, int y, const char *s, u16 fg, u16 bg, int scale) { (void)x;(void)y;(void)s;(void)fg;(void)bg;(void)scale; }
+void lcd_frame(int x, int y, int w, int h, u16 color) { (void)x;(void)y;(void)w;(void)h;(void)color; }
+void lcd_rrect(int x, int y, int w, int h, u16 fill, u16 border) { (void)x;(void)y;(void)w;(void)h;(void)fill;(void)border; }
 void lcd_flush(void) {}
 int lcd_ready(void) { return 0; }
 #endif

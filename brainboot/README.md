@@ -19,7 +19,8 @@ same way the stock second-stage is started.
 It has been:
 
 * compiled with `arm-none-eabi-gcc` for ARM926EJ-S
-* protocol-tested on the host (BootConfig, DevInfo, B000FF, ECEC, MBR/FAT16, CRC32)
+* protocol-tested on the host (BootConfig, DevInfo, B000FF, ECEC, MBR/FAT16
+  read+write, `BRAINBOO.CFG` parse/format, CRC32)
 
 It has **not** been executed on a physical PW-AJ2 in this workspace. Treat
 the first install as a non-destructive SD-card payload (see below).
@@ -56,25 +57,51 @@ The stock second-stage already understands B000FF on microSD.
 Do **not** overwrite the eMMC type-`0x53` SB partition until this SD path
 has been confirmed on the unit.
 
-## Boot menu
+## On-screen UI
 
-Serial (UARTDBG, 115200 8N1) and on-screen:
+854×480 dark console matching the dumped BRAINBOOT mockup: header
+(`SHARP BRAIN PW-AJ2`), 3× `BRAINBOOT` title, left menu in a framed box,
+right **SYSTEM STATUS** / **DEVICE INFO**, footer keycaps.
 
-| key | action |
+Status rows are **probes**, not wishful OK:
+
+| row | meaning |
 |---|---|
-| 1 / Enter on item | WinCE NK from eMMC `0x120000` |
-| 2 | DiagOS from eMMC `0x4120000` (size `0xB9437C`) |
-| 3 | `EDSH6EXE.BIN` from SD |
-| 4 | Linux `zImage` + DTB from SD |
-| 5 | print DevInfo / BootConfig / CID |
-| 6 | walking-bit DRAM test on `0x43000000–0x44FFFFFF` |
-| 7 | watchdog reboot |
+| OCRAM / DRAM probe | write/read signature at `0x18000` / `0x47E00000` |
+| eMMC / SD | `mmc_init` / `fat_mount` result |
+| Boot configuration | valid BootConfig checksum |
+| OCOTP | raw `HW_OCOTP_LOCK` (not claimed as “Secure Boot”) |
+| CPU clk | `480 MHz / CLKCTRL_CPU.DIV` (register-derived) |
 
-5 second autoboot. `EDSH6CFG.BIN` with `flags & 0x01` selects DiagOS as the
-default.
+No Sharp copyright string is drawn.
 
-Serial keys: `w`/`s` or `k`/`j` move, Enter selects, `1`–`7` jump, `q` cancels
-the timer.
+## Home menu
+
+| item | action |
+|---|---|
+| Boot WinCE | eMMC NK `@ 0x120000` |
+| Boot Linux | SD `zimage` + `dtb` from `BRAINBOO.CFG` |
+| Diagnostics | DRAM test, CID/CSD, file list, key test |
+| Boot Configuration | toggle stock flags, autoboot, default, save |
+| Recovery Mode | DiagOS, `EDSH6EXE.BIN`, NK2 `@ 0x2120000`, file boot |
+| Power Off | `HW_POWER_RESET.PWD` (`0x3e770001`) |
+
+Serial: `w`/`s` or `k`/`j`, Enter, `1`–`6`, `q` cancels the timer.
+
+## `BRAINBOO.CFG` (SD root, 8.3)
+
+```
+# brainboot cfg
+autoboot=5
+default=wince
+cmdline=console=ttyAMA0,115200 console=tty1 root=/dev/mmcblk1p2 rw rootwait
+zimage=ZIMAGE
+dtb=IMX28-PWSH6.DTB
+```
+
+`default` is `wince` / `linux` / `diag` / `sdexe` / `none`. The Boot
+Configuration screen can write this file and/or a stock `EDSH6CFG.BIN`
+(ones-complement checksum). FAT16 write is implemented (create + overwrite).
 
 ## BootConfig / DevInfo
 

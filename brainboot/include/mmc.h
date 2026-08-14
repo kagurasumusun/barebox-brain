@@ -38,6 +38,7 @@ struct mmc_dev {
 
 int  mmc_init(struct mmc_dev *dev, enum mmc_port port);
 int  mmc_read(struct mmc_dev *dev, u32 lba, u32 count, void *buf);
+int  mmc_write(struct mmc_dev *dev, u32 lba, u32 count, const void *buf);
 int  mmc_read_extcsd(struct mmc_dev *dev, u8 ext[512]);
 void mmc_print_info(const struct mmc_dev *dev);
 

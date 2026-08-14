@@ -16,6 +16,8 @@ struct fat_fs {
     u32 fat_size;
     u32 cluster_count;
     u32 root_cluster;   /* FAT32 */
+    u32 reserved;
+    u8  nfats;
     int fat32;
     int ready;
 };
@@ -25,11 +27,14 @@ struct fat_file {
     u32 size;
     u8  attr;
     char name[13];
+    u32 dir_lba;
+    u32 dir_off;
 };
 
 int fat_mount(struct fat_fs *fs, struct mmc_dev *dev, u32 hint_lba);
 int fat_find(struct fat_fs *fs, const char *name83, struct fat_file *out);
 int fat_read(struct fat_fs *fs, const struct fat_file *f, void *buf, u32 maxlen);
+int fat_write(struct fat_fs *fs, const char *name83, const void *buf, u32 len);
 int fat_list(struct fat_fs *fs, void (*cb)(const struct fat_file *f, void *ctx), void *ctx);
 
 /* MBR helpers used by both FAT and the boot menu */

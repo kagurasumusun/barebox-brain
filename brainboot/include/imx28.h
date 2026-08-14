@@ -217,6 +217,37 @@
 #define HW_DIGCTL_MICROSECONDS  0x0c0
 #define HW_DIGCTL_CHIPID        0x310
 
+/* POWER */
+#define HW_POWER_CTRL           0x000
+#define HW_POWER_5VCTRL         0x010
+#define HW_POWER_MINPWR         0x020
+#define HW_POWER_CHARGE         0x030
+#define HW_POWER_VDDDCTRL       0x040
+#define HW_POWER_VDDACTRL       0x050
+#define HW_POWER_VDDIOCTRL      0x060
+#define HW_POWER_VDDMEMCTRL     0x070
+#define HW_POWER_DCDC4P2        0x080
+#define HW_POWER_MISC           0x090
+#define HW_POWER_DCLIMITS       0x0a0
+#define HW_POWER_LOOPCTRL       0x0b0
+#define HW_POWER_STS            0x0c0
+#define HW_POWER_SPEED          0x110
+#define HW_POWER_BATTMONITOR    0x0e0
+#define HW_POWER_RESET          0x100
+#define POWER_RESET_UNLOCK      0x3e770000u
+#define POWER_RESET_PWD         (1u << 0)
+
+/* OCOTP */
+#define HW_OCOTP_CTRL           0x000
+#define HW_OCOTP_DATA           0x010
+#define HW_OCOTP_CUST0          0x020
+#define HW_OCOTP_LOCK           0x120
+#define OCOTP_CTRL_BUSY         (1u << 8)
+#define OCOTP_CTRL_ERROR        (1u << 9)
+#define OCOTP_CTRL_RD_BANK_OPEN (1u << 12)
+
+#define SSP_STATUS_FIFO_FULL    (1u << 8)
+
 /* PL011-compatible debug UART */
 #define UART_DR                 0x00
 #define UART_RSR                0x04

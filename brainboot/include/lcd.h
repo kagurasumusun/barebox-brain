@@ -15,6 +15,10 @@ void lcd_hline(int x, int y, int w, u16 color);
 void lcd_vline(int x, int y, int h, u16 color);
 void lcd_char(int x, int y, char c, u16 fg, u16 bg);
 void lcd_text(int x, int y, const char *s, u16 fg, u16 bg);
+void lcd_char_scaled(int x, int y, char c, u16 fg, u16 bg, int scale);
+void lcd_text_scaled(int x, int y, const char *s, u16 fg, u16 bg, int scale);
+void lcd_frame(int x, int y, int w, int h, u16 color);
+void lcd_rrect(int x, int y, int w, int h, u16 fill, u16 border);
 void lcd_flush(void);
 int  lcd_ready(void);
 

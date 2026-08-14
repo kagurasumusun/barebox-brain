@@ -65,18 +65,16 @@ int linux_prepare_atags(u32 atag_phys, const char *cmdline, u32 mem_base, u32 me
 }
 
 #ifdef HOST_BUILD
-int boot_linux_from_sd(struct fat_fs *sd, const char *zname, const char *dtbname)
+int boot_linux_from_sd(struct fat_fs *sd, const char *zname,
+                       const char *dtbname, const char *cmdline)
 {
-    (void)sd; (void)zname; (void)dtbname;
+    (void)sd; (void)zname; (void)dtbname; (void)cmdline;
     return -1;
 }
 #else
 
-static const char *default_cmdline =
-    "console=ttyAMA0,115200 console=tty1 "
-    "root=/dev/mmcblk1p2 rw rootwait";
-
-int boot_linux_from_sd(struct fat_fs *sd, const char *zname, const char *dtbname)
+int boot_linux_from_sd(struct fat_fs *sd, const char *zname,
+                       const char *dtbname, const char *cmdline)
 {
     struct fat_file zf, df;
     u8 *zimg = (u8 *)LINUX_ZIMAGE_PHYS;
@@ -129,7 +127,9 @@ int boot_linux_from_sd(struct fat_fs *sd, const char *zname, const char *dtbname
         }
     }
 
-    linux_prepare_atags(LINUX_ATAG_PHYS, default_cmdline,
+    if (!cmdline || !cmdline[0])
+        cmdline = "console=ttyAMA0,115200 console=tty1 root=/dev/mmcblk1p2 rw rootwait";
+    linux_prepare_atags(LINUX_ATAG_PHYS, cmdline,
                         DRAM_PHYS_BASE, DRAM_PHYS_SIZE);
 
     printf("Linux: jumping to 0x%x (%s)\n",

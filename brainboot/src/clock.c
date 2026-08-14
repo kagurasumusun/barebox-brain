@@ -45,15 +45,81 @@ u32 board_chipid(void)
 
 void board_reboot(void)
 {
-    /* Enable RTC watchdog with a short timeout. */
     writel_set(RTC_CTRL_WATCHDOGEN, IMX_RTC_BASE + HW_RTC_CTRL);
     writel(1, IMX_RTC_BASE + HW_RTC_WATCHDOG);
     for (;;)
         ;
 }
 
+void board_poweroff(void)
+{
+    /* i.MX28 HW_POWER_RESET.PWD with unlock key 0x3E77 */
+    writel(POWER_RESET_UNLOCK | POWER_RESET_PWD, IMX_POWER_BASE + HW_POWER_RESET);
+    for (;;)
+        ;
+}
+
+u32 board_cpu_hz(void)
+{
+    u32 cpu = readl(IMX_CLKCTRL_BASE + HW_CLKCTRL_CPU);
+    u32 div = cpu & 0x3fu;
+    if (div == 0)
+        div = 1;
+    /* ref_cpu is PLL0 / FRAC. PLL0 is 480 MHz when locked. */
+    return 480000000u / div;
+}
+
+u32 board_ocotp_lock(void)
+{
+    u32 ctrl = IMX_OCOTP_BASE + HW_OCOTP_CTRL;
+    u32 g = 100000;
+    writel_set(OCOTP_CTRL_RD_BANK_OPEN, ctrl);
+    while ((readl(ctrl) & OCOTP_CTRL_BUSY) && --g)
+        ;
+    return readl(IMX_OCOTP_BASE + HW_OCOTP_LOCK);
+}
+
+u32 board_rtc_seconds(void)
+{
+    return readl(IMX_RTC_BASE + HW_RTC_SECONDS);
+}
+
+int board_probe_ocram(void)
+{
+    volatile u32 *p = (volatile u32 *)0x00018000u;
+    u32 old = *p;
+    *p = 0xA5A55A5Au;
+    if (*p != 0xA5A55A5Au)
+        return 0;
+    *p = old;
+    return 1;
+}
+
+int board_probe_dram(void)
+{
+    volatile u32 *p = (volatile u32 *)0x47E00000u;
+    u32 old = *p;
+    *p = 0x5A5AA5A5u;
+    if (*p != 0x5A5AA5A5u)
+        return 0;
+    *p = old;
+    return 1;
+}
+
+u32 board_power_sts(void)
+{
+    return readl(IMX_POWER_BASE + HW_POWER_STS);
+}
+
 #else
 void clock_init(void) {}
 u32 board_chipid(void) { return 0x2800u << 16; }
 void board_reboot(void) {}
+void board_poweroff(void) {}
+u32 board_cpu_hz(void) { return 0; }
+u32 board_ocotp_lock(void) { return 0; }
+u32 board_rtc_seconds(void) { return 0; }
+int board_probe_ocram(void) { return 0; }
+int board_probe_dram(void) { return 0; }
+u32 board_power_sts(void) { return 0; }
 #endif
