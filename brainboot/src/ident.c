@@ -68,6 +68,7 @@ void ident_clear(struct device_ident *id)
     strncpy(id->gen, "-", sizeof(id->gen) - 1);
     strncpy(id->cfg_name, SD_BOOTCFG_NAME, sizeof(id->cfg_name) - 1);
     strncpy(id->exe_name, SD_BOOTEXE_NAME, sizeof(id->exe_name) - 1);
+    strncpy(id->dev_name, SD_DEVINFO_NAME, sizeof(id->dev_name) - 1);
     strncpy(id->banner, "SHARP   UNKNOWN", sizeof(id->banner) - 1);
 }
 
@@ -99,13 +100,16 @@ void ident_format(struct device_ident *id)
         id->known = 0;
     }
 
-    /* 8.3 names: EDxxxx + CFG/EXE.BIN. Fall back to the stock SH6 pair. */
+    /* Same 8.3 rule for CFG / EXE / DEV. DEVINFO.BIN does not fit 8.3
+     * (EDSH6DEVINFO = 12); FAT 8.3 name is EDSH6DEV.BIN. */
     if (id->key[0] && strlen(id->key) <= 8) {
         snprint(id->cfg_name, sizeof(id->cfg_name), "%sCFG.BIN", id->key);
         snprint(id->exe_name, sizeof(id->exe_name), "%sEXE.BIN", id->key);
+        snprint(id->dev_name, sizeof(id->dev_name), "%sDEV.BIN", id->key);
     } else {
         strncpy(id->cfg_name, SD_BOOTCFG_NAME, sizeof(id->cfg_name) - 1);
         strncpy(id->exe_name, SD_BOOTEXE_NAME, sizeof(id->exe_name) - 1);
+        strncpy(id->dev_name, SD_DEVINFO_NAME, sizeof(id->dev_name) - 1);
     }
 
     if (id->version)

@@ -19,8 +19,9 @@ struct device_ident {
     char retail[16];        /* "PW-SH6" or "UNKNOWN" */
     char gen[12];           /* "gen3_6" or "-" */
     char banner[48];        /* EBL-style identity line */
-    char cfg_name[16];      /* EDSH6CFG.BIN */
-    char exe_name[16];      /* EDSH6EXE.BIN */
+    char cfg_name[16];      /* EDSH6CFG.BIN  (8.3) */
+    char exe_name[16];      /* EDSH6EXE.BIN  (8.3) */
+    char dev_name[16];      /* EDSH6DEV.BIN  (8.3 of DEVINFO) */
     u32  version;
     int  known;
     int  from_devinfo;

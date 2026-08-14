@@ -11,7 +11,8 @@ It boots:
 * Linux `zImage` + DTB from microSD
 
 Default behaviour matches stock EBOOT: **no graphical UI**. The mockup
-screen appears only when a flag + checksum says so (see BOOTMENU.BIN).
+screen appears only when `BOOTMENU.BIN` SHOW, `menu=on`, or a held key
+says so. Engineer `0x10` is DiagApp, not this UI.
 
 ## What this is / is not
 
@@ -42,17 +43,22 @@ It has **not** been executed on a physical PW-AJ2 in this workspace.
 ```
 sudo apt install gcc-arm-none-eabi
 cd brainboot
-make            # ARM image + packed SD EXE
-make test       # host protocol tests
+make            # ARM image + packed SD EXE (path A)
+make emmc       # eMMC type-0x53 SB image (path B)
+make test       # host protocol tests + splash PPM
 ```
 
-Outputs in `build/`:
+Two install images (same payload, different wrappers):
 
-| file | use |
-|---|---|
-| `brainboot.elf` / `brainboot.bin` | raw image, linked at `0x40200000` |
-| `EDSH6EXE.BIN` | B000FF wrapper, load address `0xA0200000` |
-| `brainboot.ecec.bin` | same payload with an ECEC stamp at `+0x40` |
+| target | file | use |
+|---|---|---|
+| `make` / `make sd` | `build/EDSH6EXE.BIN` | B000FF Card-BOOT EXE; stock first-stage stays |
+| `make` / `make sd` | `build/EDSH6CFG.BIN` / `EDSH6DEV.BIN` | same 8.3 trio stock EBOOT loads |
+| `make emmc` | `build/brainboot.sb` + `emmc_brainboot.img` | replaces the type-`0x53` SB stream |
+
+Also: `brainboot.elf` / `.bin` (raw @ `0x40200000`), `brainboot.ecec.bin`,
+`build/splash.ppm` / `host-splash.png` (host render of the Sharp wordmark;
+qemu-brain screendump needs `qemu-system-arm -M brain`).
 
 `python3 tools/mkbootmenu.py --show -o BOOTMENU.BIN` builds the UI gate file.
 
@@ -60,16 +66,20 @@ Outputs in `build/`:
 
 On every boot, serial prints the EBOOT lines from `BOOT.md`:
 
-1. `DevInfo OK!!` (eMMC LBA 4) or a checksum failure
+1. `DevInfo OK!!` (SD `EDxxxxDEV.BIN` / `EDSH6DEVINFO.BIN` or eMMC LBA 4)
 2. `Find Boot Config File!!` / `Boot Config OK!!` from SD `EDxxxxCFG.BIN`
-   or eMMC LBA 2; otherwise `Check Card BOOT`
-3. No UI unless one of:
-   * `BOOTMENU.BIN` present, checksums, and `FLAG_SHOW`
-   * BootConfig Engineer (`0x10`)
-   * Enter / Esc held, or a UART character during probe
-   * `BRAINBOO.CFG` has `menu=on`
-4. Otherwise: DiagBoot (`0x01`) → `Fast Diag Boot!!!` → DiagOS;
-   else NK at `0x120000`. Linux only if `default=linux`.
+   or eMMC LBA 2
+3. No UI unless `BOOTMENU.BIN` SHOW, `menu=on`, or a held key.
+   Engineer `0x10` / DevMode `0x20` are serial / DiagApp only.
+4. Otherwise:
+   * Diag `0x01` → `Fast Diag Boot!!!` → DiagOS
+   * empty CFG, or CardBoot `0x02`, **and** a real OS EXE (≥ 1 MiB
+     B000FF/ECEC) → `Enable Card Boot!!!` (never our ~55 KiB image)
+   * else NK at `0x120000`
+
+Verified flag bits only: `0x01` Diag, `0x02` CardBoot, `0x10` Engineer,
+`0x20` DevMode. Bits `0x04`/`0x08` and `devflags` have no independent
+source — they are reported as reserved, not invented.
 
 ## `BOOTMENU.BIN`
 
@@ -92,6 +102,11 @@ ones-complement checksum as BootConfig.
 `ident.c` maps DevInfo.model through the ResetKit / lilo table
 (`EDSH6` → `PW-SH6` / `gen3_6`, `EDAJ2` → `PW-AJ2`, …). An unknown or
 missing record stays `UNKNOWN`; it is not forced to PW-AJ2.
+
+SD file names are the same 8.3 rule for all three records:
+`EDxxxxCFG.BIN`, `EDxxxxEXE.BIN`, `EDxxxxDEV.BIN`. The long
+`EDSH6DEVINFO.BIN` does not fit 8.3 (the FAT driver skips LFN);
+it is tried as a fallback after the 8.3 name.
 
 DRAM size is read with the same `DRAM_CTL29/31` formula as barebox
 `imx28_get_memsize()`. EDNA2 doorbell (`0x400EA03C`) and I2C0 CTRL are
@@ -162,8 +177,10 @@ stock `emmc.img` was not downloaded for this run.
    `EDSH6CFG.BIN` / `zImage` / DTB.
 4. Power on. Stock EBOOT Card BOOT loads the EXE to `0xA0200000`.
 
-Do **not** overwrite the eMMC type-`0x53` SB partition until the SD
-path has been confirmed on the unit.
+Path B (`make emmc`) writes a cleartext SB (OTP key = 0, matching
+production Brain units) at the stock type-`0x53` start (LBA 256) with
+BCB `0x00112233`. Do **not** flash that image over a working unit
+until the SD path has been confirmed.
 
 ## Memory map
 

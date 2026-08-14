@@ -24,7 +24,8 @@ int policy_stock_action(const struct boot_ctx *ctx)
 {
     if (ctx->bc.valid && (ctx->bc.flags & BOOTCFG_FLAG_DIAG))
         return ACT_DIAGOS;
-    if (!ctx->bc.valid && ctx->card_exe_os)
+    if (ctx->card_exe_os &&
+        (!ctx->bc.valid || (ctx->bc.flags & BOOTCFG_FLAG_CARDBOOT)))
         return ACT_SDEXE;
     return ACT_WINCE;
 }

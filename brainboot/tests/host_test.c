@@ -25,11 +25,23 @@ static void test_bootcfg(void)
 {
     u8 sec[512];
     struct boot_config bc;
+    char fl[96];
     bootcfg_build(0x11, 0, 0, sec);
     EXPECT(bootcfg_verify_bytes(sec) == 0, "bootcfg self-checksum");
     EXPECT(bootcfg_parse(sec, &bc) == 0, "bootcfg parse");
     EXPECT(bc.flags == 0x11, "bootcfg flags 0x11");
     EXPECT(bc.valid == 1, "bootcfg valid");
+    EXPECT(bootcfg_describe_flags(0x11, fl, sizeof(fl)) > 0, "describe 0x11");
+    EXPECT(strstr(fl, "DiagBoot") != NULL, "describe DiagBoot");
+    EXPECT(strstr(fl, "Engineer") != NULL, "describe Engineer");
+    EXPECT(strstr(fl, "CardBoot") == NULL, "describe no CardBoot");
+    bootcfg_describe_flags(BOOTCFG_FLAG_CARDBOOT | BOOTCFG_FLAG_DEVMODE | 0x04,
+                           fl, sizeof(fl));
+    EXPECT(strstr(fl, "CardBoot") != NULL, "describe CardBoot");
+    EXPECT(strstr(fl, "DevMode") != NULL, "describe DevMode");
+    EXPECT(strstr(fl, "unk=0x") != NULL, "describe reserved remainder");
+    EXPECT((BOOTCFG_FLAG_KNOWN & 0x04) == 0, "reserved2 not claimed");
+    EXPECT((BOOTCFG_FLAG_KNOWN & 0x08) == 0, "reserved3 not claimed");
     sec[0x2e] ^= 1;
     EXPECT(bootcfg_verify_bytes(sec) != 0, "bootcfg rejects bad nsum");
 }
@@ -50,6 +62,12 @@ static void test_devinfo(void)
     EXPECT(devinfo_parse(sec, &di) == 0, "devinfo parse real LBA4");
     EXPECT(di.version == 4, "devinfo version 4");
     EXPECT(memcmp(di.model, "EDSH6", 5) == 0, "devinfo model EDSH6");
+
+    memset(sec, 0, 512);
+    EXPECT(devinfo_build("EDSH6", 4, sec) == 0, "devinfo_build");
+    EXPECT(devinfo_parse(sec, &di) == 0, "devinfo_build parses");
+    EXPECT(di.version == 4, "devinfo_build version");
+    EXPECT(memcmp(di.model, "EDSH6", 5) == 0, "devinfo_build model");
 }
 
 static void test_b000ff(void)
@@ -335,10 +353,14 @@ static void test_ident(void)
     EXPECT(strcmp(id.internal, "ED-SH6") == 0, "ident internal ED-SH6");
     EXPECT(strcmp(id.gen, "gen3_6") == 0, "ident gen3_6");
     EXPECT(strcmp(id.exe_name, "EDSH6EXE.BIN") == 0, "ident exe name");
+    EXPECT(strcmp(id.cfg_name, "EDSH6CFG.BIN") == 0, "ident cfg name");
+    EXPECT(strcmp(id.dev_name, "EDSH6DEV.BIN") == 0, "ident dev 8.3 name");
 
     memcpy(di.model, "EDAJ2", 5);
     ident_from_devinfo(&id, &di);
     EXPECT(strcmp(id.retail, "PW-AJ2") == 0, "ident EDAJ2 -> PW-AJ2");
+    EXPECT(strcmp(id.cfg_name, "EDAJ2CFG.BIN") == 0, "ident EDAJ2 cfg 8.3");
+    EXPECT(strcmp(id.dev_name, "EDAJ2DEV.BIN") == 0, "ident EDAJ2 dev 8.3");
 
     memcpy(di.model, "EDZZ9", 5);
     ident_from_devinfo(&id, &di);
@@ -378,6 +400,9 @@ static void test_policy(void)
     ctx.cfg.default_target = BB_DEFAULT_WINCE;
     ctx.card_exe_os = 1;
     EXPECT(policy_silent_action(&ctx) == ACT_WINCE, "policy valid CFG ignores EXE");
+    ctx.bc.flags = BOOTCFG_FLAG_CARDBOOT;
+    EXPECT(policy_silent_action(&ctx) == ACT_SDEXE, "policy CardBoot + real EXE");
+    ctx.bc.flags = 0;
     ctx.bc.valid = 0;
     EXPECT(policy_silent_action(&ctx) == ACT_SDEXE, "policy no CFG + real EXE");
     ctx.card_exe_os = 0;

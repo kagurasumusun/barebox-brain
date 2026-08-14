@@ -31,6 +31,22 @@ def main() -> int:
     assert (sum(buf[0:0x30]) & 0xFFFF) == s
     assert ns == (0xFFFF - s) & 0xFFFF
     print("ok   python bootcfg ones-complement inclusive")
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    import mksb
+
+    payload = b"\xea\xff\xff\xfe" + b"\x00" * 60
+    sb = mksb.build_sb(payload)
+    info = mksb.parse_sb(sb)
+    assert info["nr_keys"] == 0
+    assert info["ops"][0][0] == "LOAD"
+    assert info["ops"][0][1] == 0x40200000
+    assert info["ops"][0][2] == len(payload)
+    assert info["ops"][-1][0] == "JUMP"
+    assert sb[20:24] == b"STMP"
+    bcb = mksb.build_bcb(257, 8)
+    assert bcb[:4] == b"\x33\x22\x11\x00"
+    print("ok   python SB LOAD+JUMP + BCB 0x00112233")
     return 0
 
 

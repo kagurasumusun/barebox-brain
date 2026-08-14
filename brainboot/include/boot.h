@@ -43,8 +43,10 @@ struct b000ff_hdr {
 int  bootcfg_parse(const u8 sec[512], struct boot_config *out);
 int  bootcfg_build(u32 flags, u32 devflags, u32 model, u8 sec[512]);
 int  bootcfg_verify_bytes(const u8 *p);
+int  bootcfg_describe_flags(u32 flags, char *out, u32 outsz);
 
 int  devinfo_parse(const u8 sec[512], struct dev_info *out);
+int  devinfo_build(const char *model, u32 version, u8 sec[512]);
 
 int  b000ff_parse(const u8 *buf, u32 len, struct b000ff_hdr *hdr, const u8 **payload);
 int  b000ff_verify(const struct b000ff_hdr *hdr, const u8 *payload);

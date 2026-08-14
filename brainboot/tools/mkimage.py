@@ -58,8 +58,19 @@ def main() -> int:
     args.outdir.mkdir(parents=True, exist_ok=True)
     write_b000ff(payload, args.outdir / "EDSH6EXE.BIN", NK_LOAD)
     write_ecec(payload, args.outdir / "brainboot.ecec.bin", NK_LOAD)
-    # Also emit a copy named for the SD Linux path documentation.
     (args.outdir / "brainboot.bin").write_bytes(payload)
+
+    # Same 8.3 trio stock EBOOT looks for on SD.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "mk_qemu_images", pathlib.Path(__file__).resolve().parents[1] / "tests" / "mk_qemu_images.py"
+    )
+    mq = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mq)
+    (args.outdir / "EDSH6CFG.BIN").write_bytes(mq.make_bootcfg(0))
+    (args.outdir / "EDSH6DEV.BIN").write_bytes(mq.make_devinfo("EDSH6", 4))
+    print(f"wrote {args.outdir / 'EDSH6CFG.BIN'}  flags=0")
+    print(f"wrote {args.outdir / 'EDSH6DEV.BIN'}  model=EDSH6")
     return 0
 
 

@@ -25,7 +25,7 @@ C_OBJ := $(patsubst src/%.c,build/%.o,$(C_SRC))
 S_OBJ := $(patsubst src/%.S,build/%.o,$(S_SRC))
 OBJ   := $(S_OBJ) $(C_OBJ)
 
-.PHONY: all clean test host images
+.PHONY: all clean test host images sd emmc splash
 
 all: build/brainboot.bin images
 
@@ -45,8 +45,16 @@ build/brainboot.bin: build/brainboot.elf
 	$(OBJCOPY) -O binary $< $@
 	@ls -l $@
 
+# Path A: SD Card-BOOT EXE (stock first-stage stays). Also emits CFG/DEV.
 images: build/brainboot.bin
 	python3 tools/mkimage.py --bin build/brainboot.bin --outdir build
+
+sd: images
+
+# Path B: replace the eMMC type-0x53 SB stream (i.MX28 ROM / qemu-brain).
+emmc: build/brainboot.bin
+	python3 tools/mksb.py --bin build/brainboot.bin --out build/brainboot.sb
+	python3 tools/mk_emmc_boot.py --sb build/brainboot.sb --out build/emmc_brainboot.img
 
 host: build/host_test
 	./build/host_test
@@ -58,7 +66,18 @@ build/host_test: tests/host_test.c src/string.c src/bootconfig.c src/fat.c src/c
 	    -o $@ tests/host_test.c src/string.c src/bootconfig.c src/fat.c src/config.c \
 	        src/ident.c src/bootmenu.c src/policy.c src/keyboard.c
 
-test: host
+build/render_splash: tests/render_splash.c src/splash.c src/font.c
+	@mkdir -p build
+	$(HOSTCC) -std=gnu11 -Wall -Wextra -DHOST_BUILD -Iinclude -no-pie \
+	    -o $@ tests/render_splash.c src/splash.c src/font.c
+
+build/splash.ppm: build/render_splash
+	./build/render_splash $@
+	-convert $@ build/splash.png
+
+splash: build/splash.ppm
+
+test: host splash
 	python3 tests/test_protocol.py
 
 clean:

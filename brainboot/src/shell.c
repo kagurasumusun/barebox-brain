@@ -156,7 +156,8 @@ static void cmd_ident(struct boot_ctx *ctx)
            ctx->ident.raw_model, ctx->ident.key, ctx->ident.retail,
            ctx->ident.gen, ctx->ident.version, ctx->ident.from_devinfo,
            ctx->ident.known);
-    printf("cfg=%s exe=%s\n", ctx->ident.cfg_name, ctx->ident.exe_name);
+    printf("cfg=%s exe=%s dev=%s\n",
+           ctx->ident.cfg_name, ctx->ident.exe_name, ctx->ident.dev_name);
 }
 
 static void cmd_md(const char *a1, const char *a2, const char *a3)

@@ -2,6 +2,28 @@
 #include "boot.h"
 #include "board.h"
 
+int bootcfg_describe_flags(u32 flags, char *out, u32 outsz)
+{
+    char buf[96];
+    u32 n = 0;
+    u32 unk = flags & ~BOOTCFG_FLAG_KNOWN;
+
+    buf[0] = 0;
+    if (flags & BOOTCFG_FLAG_DIAG)
+        n += snprint(buf + n, sizeof(buf) - n, "DiagBoot ");
+    if (flags & BOOTCFG_FLAG_CARDBOOT)
+        n += snprint(buf + n, sizeof(buf) - n, "CardBoot ");
+    if (flags & BOOTCFG_FLAG_ENGINEER)
+        n += snprint(buf + n, sizeof(buf) - n, "Engineer ");
+    if (flags & BOOTCFG_FLAG_DEVMODE)
+        n += snprint(buf + n, sizeof(buf) - n, "DevMode ");
+    if (unk)
+        n += snprint(buf + n, sizeof(buf) - n, "unk=0x%x ", unk);
+    if (n == 0)
+        snprint(buf, sizeof(buf), "(none)");
+    return snprint(out, outsz, "%s", buf);
+}
+
 int bootcfg_verify_bytes(const u8 *p)
 {
     u16 s, ns;
@@ -81,6 +103,31 @@ int devinfo_parse(const u8 sec[512], struct dev_info *out)
     out->sum16 = s;
     out->nsum16 = ns;
     out->valid = 1;
+    return 0;
+}
+
+int devinfo_build(const char *model, u32 version, u8 sec[512])
+{
+    u32 i;
+
+    memset(sec, 0, 512);
+    memcpy(sec, DEVINFO_MAGIC, 26);
+    if (model) {
+        for (i = 0; i < 8 && model[i]; i++)
+            sec[0x20 + i] = (u8)model[i];
+    }
+    sec[0x28] = (u8)version;
+    sec[0x29] = (u8)(version >> 8);
+    sec[0x2a] = (u8)(version >> 16);
+    sec[0x2b] = (u8)(version >> 24);
+    {
+        u16 s = (u16)((sum16(sec, 0x2c) + 0x1feu) & 0xffffu);
+        u16 ns = (u16)((0xffffu - s) & 0xffffu);
+        sec[0x2c] = (u8)s;
+        sec[0x2d] = (u8)(s >> 8);
+        sec[0x2e] = (u8)ns;
+        sec[0x2f] = (u8)(ns >> 8);
+    }
     return 0;
 }
 

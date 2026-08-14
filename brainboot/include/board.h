@@ -52,7 +52,8 @@
 #define EMMC_BOOT_PART_TYPE     0x53u
 
 #define SD_BOOTCFG_NAME         "EDSH6CFG.BIN"
-#define SD_DEVINFO_NAME         "EDSH6DEVINFO.BIN"
+#define SD_DEVINFO_NAME         "EDSH6DEV.BIN"     /* 8.3 of EDSH6DEVINFO.BIN */
+#define SD_DEVINFO_LONG         "EDSH6DEVINFO.BIN"
 #define SD_BOOTEXE_NAME         "EDSH6EXE.BIN"
 #define SD_ZIMAGE_NAME          "ZIMAGE"
 #define SD_DTB_NAME             "IMX28-PWSH6.DTB"
@@ -60,7 +61,7 @@
 #define SD_BBCONF_NAME          "BRAINBOO.CFG"
 #define SD_BOOTMENU_NAME        "BOOTMENU.BIN"
 
-#define BB_VERSION              "1.5.0"
+#define BB_VERSION              "1.6.0"
 
 #define LCD_WIDTH               854
 #define LCD_HEIGHT              480
@@ -81,8 +82,12 @@
 /* BootConfig flags */
 #define BOOTCFG_FLAG_DIAG       0x01u
 #define BOOTCFG_FLAG_CARDBOOT   0x02u
+#define BOOTCFG_FLAG_RESERVED2  0x04u  /* no verified meaning — do not invent */
+#define BOOTCFG_FLAG_RESERVED3  0x08u  /* no verified meaning — do not invent */
 #define BOOTCFG_FLAG_ENGINEER   0x10u
 #define BOOTCFG_FLAG_DEVMODE    0x20u
+#define BOOTCFG_FLAG_KNOWN      (BOOTCFG_FLAG_DIAG | BOOTCFG_FLAG_CARDBOOT | \
+                                 BOOTCFG_FLAG_ENGINEER | BOOTCFG_FLAG_DEVMODE)
 
 #define B000FF_MAGIC            "B000FF\n"
 #define ECEC_MAGIC              0x43454345u
