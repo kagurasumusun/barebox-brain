@@ -89,7 +89,8 @@ void lcd_init(void)
     mdelay(1);
     writel_clr(LCDIF_CTRL_SFTRST | LCDIF_CTRL_CLKGATE, lcd + HW_LCDIF_CTRL);
 
-    writel(LCDIF_CTRL1_BYTE_PACKING_FORMAT(0x3) | LCDIF_CTRL1_RESET,
+    /* 0xF = all four bytes valid → two packed RGB565 pixels per word. */
+    writel(LCDIF_CTRL1_BYTE_PACKING_FORMAT(0xf) | LCDIF_CTRL1_RESET,
            lcd + HW_LCDIF_CTRL1);
 
     /* System 8080 mode */

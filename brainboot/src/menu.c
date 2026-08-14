@@ -221,7 +221,7 @@ static int bootcfg_editor(struct boot_ctx *ctx)
         snprint(row[n], 40, "Default      %s", bb_default_name(ctx->cfg.default_target));
         items[n] = row[n]; n++;
         items[n++] = "Save BRAINBOO.CFG to SD";
-        items[n++] = "Write EDSH6CFG.BIN to SD";
+        items[n++] = "Write ident CFG.BIN to SD";
         items[n++] = "Write BootConfig to eMMC LBA2";
         items[n++] = "Write BOOTMENU.BIN (show)";
         items[n++] = "Write BOOTMENU.BIN (hide)";
@@ -261,11 +261,13 @@ static int bootcfg_editor(struct boot_ctx *ctx)
                     printf("save cfg rc=%d\n", rc);
                     keyboard_get_timeout(4000);
                 } else if (sel == 7) {
-                    int rc = eboot_store_bootcfg_sd(&ctx->sdfat, ctx->bc.flags,
-                                                    ctx->bc.devflags, ctx->bc.model);
-                    ui_message(ctx, "Write EDSH6CFG.BIN",
-                               rc ? "FAILED" : "Wrote EDSH6CFG.BIN (Diag-compatible)");
-                    printf("save edsh6cfg rc=%d flags=0x%x\n", rc, ctx->bc.flags);
+                    int rc = eboot_store_bootcfg_sd(&ctx->sdfat, ctx->ident.cfg_name,
+                                                    ctx->bc.flags, ctx->bc.devflags,
+                                                    ctx->bc.model);
+                    ui_message(ctx, ctx->ident.cfg_name,
+                               rc ? "FAILED" : "Wrote CFG (Diag-compatible)");
+                    printf("save %s rc=%d flags=0x%x\n",
+                           ctx->ident.cfg_name, rc, ctx->bc.flags);
                     keyboard_get_timeout(4000);
                 } else if (sel == 8) {
                     int rc = eboot_store_bootcfg(&ctx->emmc, ctx->bc.flags,

@@ -19,8 +19,11 @@ struct resume_info {
 void eboot_setup_pixclock(void);
 int  eboot_check_resume(struct resume_info *out);
 int  eboot_store_bootcfg(struct mmc_dev *emmc, u32 flags, u32 devflags, u32 model);
-int  eboot_store_bootcfg_sd(struct fat_fs *sd, u32 flags, u32 devflags, u32 model);
-int  eboot_store_devinfo_sd(struct fat_fs *sd, const char *model, u32 version);
+int  eboot_store_bootcfg_sd(struct fat_fs *sd, const char *name,
+                            u32 flags, u32 devflags, u32 model);
+int  eboot_store_devinfo_sd(struct fat_fs *sd, const char *name,
+                            const char *model, u32 version);
+int  eboot_store_devinfo(struct mmc_dev *emmc, const char *model, u32 version);
 int  eboot_store_factory(struct mmc_dev *emmc);
 int  eboot_store_charge(struct mmc_dev *emmc, const struct charge_info *ci);
 int  eboot_reset_default_bootcfg(struct mmc_dev *emmc);

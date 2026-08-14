@@ -144,7 +144,7 @@ const char *ident_display(const struct device_ident *id)
 #define DRAM_CTL29_CS0_EN       (1u << 24)
 #define DRAM_CTL29_CS1_EN       (1u << 25)
 
-u32 ident_dram_bytes(void)
+static u32 ident_dram_from_ctl(void)
 {
     u32 ctl29 = readl(DRAM_CTL(29));
     u32 ctl31 = readl(DRAM_CTL(31));
@@ -165,6 +165,64 @@ u32 ident_dram_bytes(void)
     if (bytes < (16u << 20) || bytes > (512u << 20))
         return 0;
     return bytes;
+}
+
+/* When DRAM_CTL is unprogrammed (qemu-brain, some XLDR skips), walk
+ * 16..256 MiB by writing a token at the last page of each size and
+ * checking it is not an alias of a smaller window. */
+static u32 ident_dram_walk(void)
+{
+    static const u32 sizes[] = {
+        16u << 20, 32u << 20, 64u << 20, 128u << 20
+    };
+    u32 base = DRAM_PHYS_BASE;
+    u32 last = 0;
+    u32 i, j;
+
+    for (i = 0; i < ARRAY_SIZE(sizes); i++) {
+        u32 sz = sizes[i];
+        u32 addr = base + sz - 0x1000u;
+        volatile u32 *p;
+        u32 old, token, aliased = 0;
+
+        /* Never touch past the physical window: an unmapped poke
+         * prefetch-aborts on this SoC / qemu-brain (strict-hw). */
+        if (sz > DRAM_PHYS_SIZE || addr >= base + DRAM_PHYS_SIZE)
+            break;
+        /* Do not poke this image or the framebuffer. */
+        if (addr >= 0x40200000u && addr < 0x40300000u)
+            continue;
+        if (addr >= 0x46000000u && addr < 0x46200000u)
+            continue;
+        p = (volatile u32 *)addr;
+        token = 0xB2010000u + i;
+        old = *p;
+        *p = token;
+        if (*p != token) {
+            *p = old;
+            break;
+        }
+        for (j = 0; j < i; j++) {
+            u32 a2 = base + sizes[j] - 0x1000u;
+            if (*(volatile u32 *)a2 == token) {
+                aliased = 1;
+                break;
+            }
+        }
+        *p = old;
+        if (aliased)
+            break;
+        last = sz;
+    }
+    return last;
+}
+
+u32 ident_dram_bytes(void)
+{
+    u32 n = ident_dram_from_ctl();
+    if (n)
+        return n;
+    return ident_dram_walk();
 }
 
 u32 ident_edna2_doorbell(void)

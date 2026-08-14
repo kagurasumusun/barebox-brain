@@ -58,6 +58,7 @@ struct boot_ctx {
     u32 ocotp_lock;
     u32 rtc_seconds;
     u32 power_sts;
+    u32 batt_mv;
     u32 dram_bytes;
     u32 edna2_doorbell;
     u32 i2c0_ctrl;

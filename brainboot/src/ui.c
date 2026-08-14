@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "ui.h"
 #include "board.h"
+#include "boot.h"
 
 void ui_clear(void)
 {
@@ -150,14 +151,24 @@ void ui_home(const struct boot_ctx *ctx, const char **items, int n,
     }
     if (ctx->bc.valid && (ctx->bc.flags & BOOTCFG_FLAG_DIAG))
         mode = "Diag";
+    else if (ctx->bc.valid && (ctx->bc.flags & BOOTCFG_FLAG_CARDBOOT))
+        mode = "CardBoot";
     else if (ctx->cfg.default_target == BB_DEFAULT_LINUX)
         mode = "Linux default";
     ui_kv(470, 306, "Boot mode", mode);
-    snprint(line, sizeof(line), "LOCK=%x", ctx->ocotp_lock);
-    ui_kv(470, 322, "OCOTP", line);
+    {
+        char fl[40];
+        if (ctx->bc.valid)
+            bootcfg_describe_flags(ctx->bc.flags, fl, sizeof(fl));
+        else
+            strncpy(fl, "(no CFG)", sizeof(fl) - 1);
+        ui_kv(470, 322, "Flags", fl);
+    }
+    snprint(line, sizeof(line), "%u mV", ctx->batt_mv);
+    ui_kv(470, 338, "Battery", line);
     snprint(line, sizeof(line), "%u MHz (CLKCTRL)", ctx->cpu_hz / 1000000u);
-    ui_kv(470, 338, "CPU clk", line);
-    ui_kv(470, 354, "Version", "v" BB_VERSION);
+    ui_kv(470, 354, "CPU clk", line);
+    ui_kv(470, 370, "Version", "v" BB_VERSION);
 
     if (remain >= 0) {
         snprint(line, sizeof(line), "Autoboot in %u s", (unsigned)remain);

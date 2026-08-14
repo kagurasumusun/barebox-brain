@@ -5,6 +5,7 @@
 #include "ident.h"
 #include "keyboard.h"
 #include "eboot.h"
+#include "ebl.h"
 
 #ifdef HOST_BUILD
 int shell_run(struct boot_ctx *ctx) { (void)ctx; return ACT_NONE; }
@@ -106,7 +107,11 @@ static void cmd_help(void)
     printf("  md [-l] ADDR [N]     memory dump (32-bit)\n");
     printf("  mw ADDR VAL          memory write 32-bit\n");
     printf("  boot wince|linux|diag|sdexe|nk2\n");
-    printf("  cfg [flash|sd]        show / write BootConfig\n");
+    printf("  cfg [flash|sd|diag|card|eng|dev]\n");
+    printf("  ls                   SD root (FAT 8.3)\n");
+    printf("  rtc                  HW_RTC calendar\n");
+    printf("  power                POWER_STS / battery / LRADC\n");
+    printf("  beep [ms]            PWM4 buzzer\n");
     printf("  go ADDR              branch to address\n");
     printf("  reset                watchdog reset\n");
     printf("  poweroff             HW_POWER_RESET.PWD\n");
@@ -121,11 +126,11 @@ static void cmd_detect(struct boot_ctx *ctx)
     printf("ocram      %s\n", ctx->ocram_ok ? "ok" : "fail");
     printf("dram probe %s\n", ctx->dram_ok ? "ok" : "fail");
     if (dram)
-        printf("dram ctl   %u MiB (barebox imx28_get_memsize)\n", dram >> 20);
+        printf("dram       %u MiB\n", dram >> 20);
     else
-        printf("dram ctl   unreadable / not programmed\n");
+        printf("dram       unreadable\n");
     printf("ocotp_lock 0x%x\n", ctx->ocotp_lock);
-    printf("power_sts  0x%x\n", ctx->power_sts);
+    printf("power_sts  0x%x  batt=%u mV\n", ctx->power_sts, ctx->batt_mv);
     printf("rtc        %u s\n", ctx->rtc_seconds);
     printf("edna2 db   0x%x @ 0x%x\n", ident_edna2_doorbell(),
            EDNA2_MAILBOX_PHYS + EDNA2_DOORBELL_OFF);
@@ -208,6 +213,101 @@ static int cmd_boot(struct boot_ctx *ctx, const char *what)
     return ACT_NONE;
 }
 
+static void ls_cb(const struct fat_file *f, void *user)
+{
+    (void)user;
+    printf("  %s  %u\n", f->name, f->size);
+}
+
+static void cmd_ls(struct boot_ctx *ctx)
+{
+    if (!ctx->sdfat.ready) {
+        printf("ls: SD FAT not mounted\n");
+        return;
+    }
+    fat_list(&ctx->sdfat, ls_cb, NULL);
+}
+
+static void cmd_rtc(void)
+{
+    struct ebl_rtc r;
+    ebl_rtc_read(&r);
+    printf("rtc present=%d alarm=%d seconds=%u\n",
+           r.present, r.alarm_present, r.seconds);
+    if (r.present)
+        printf("%u-%u-%u %u:%u:%u.%u\n",
+               r.year, r.month, r.day, r.hour, r.min, r.sec, r.msec);
+}
+
+static void cmd_power(struct boot_ctx *ctx)
+{
+    struct ebl_power p;
+    ebl_power_read(&p);
+    ctx->power_sts = p.sts;
+    ctx->batt_mv = p.batt_mv;
+    printf("sts=0x%x batt=%u mV raw=%u dc_ok=%d vbus=%d bo=%d lradc7=%u\n",
+           p.sts, p.batt_mv, p.batt_raw, p.dc_ok, p.vbus, p.batt_bo,
+           p.lradc_ch7);
+}
+
+static int flag_toggle(struct boot_ctx *ctx, u32 bit, const char *onoff)
+{
+    if (!onoff) {
+        printf("need on|off\n");
+        return -1;
+    }
+    if (strcmp(onoff, "on") == 0 || strcmp(onoff, "1") == 0)
+        ctx->bc.flags |= bit;
+    else if (strcmp(onoff, "off") == 0 || strcmp(onoff, "0") == 0)
+        ctx->bc.flags &= ~bit;
+    else {
+        printf("need on|off\n");
+        return -1;
+    }
+    ctx->bc.valid = 1;
+    return 0;
+}
+
+static void cmd_cfg(struct boot_ctx *ctx, const char *a1, const char *a2)
+{
+    char fl[96];
+
+    if (!a1) {
+        bootcfg_describe_flags(ctx->bc.flags, fl, sizeof(fl));
+        printf("flags=0x%x %s valid=%d flash=%d sd=%d\n",
+               ctx->bc.flags, fl, ctx->bc.valid,
+               ctx->bc_from_flash, ctx->bc_from_sd);
+        return;
+    }
+    if (strcmp(a1, "flash") == 0) {
+        printf("cfg flash rc=%d\n",
+               eboot_store_bootcfg(&ctx->emmc, ctx->bc.flags,
+                                   ctx->bc.devflags, ctx->bc.model));
+        return;
+    }
+    if (strcmp(a1, "sd") == 0) {
+        printf("cfg sd %s rc=%d\n", ctx->ident.cfg_name,
+               eboot_store_bootcfg_sd(&ctx->sdfat, ctx->ident.cfg_name,
+                                      ctx->bc.flags, ctx->bc.devflags,
+                                      ctx->bc.model));
+        return;
+    }
+    if (strcmp(a1, "diag") == 0)
+        flag_toggle(ctx, BOOTCFG_FLAG_DIAG, a2);
+    else if (strcmp(a1, "card") == 0)
+        flag_toggle(ctx, BOOTCFG_FLAG_CARDBOOT, a2);
+    else if (strcmp(a1, "eng") == 0)
+        flag_toggle(ctx, BOOTCFG_FLAG_ENGINEER, a2);
+    else if (strcmp(a1, "dev") == 0)
+        flag_toggle(ctx, BOOTCFG_FLAG_DEVMODE, a2);
+    else {
+        printf("cfg [flash|sd|diag|card|eng|dev]\n");
+        return;
+    }
+    bootcfg_describe_flags(ctx->bc.flags, fl, sizeof(fl));
+    printf("flags=0x%x %s\n", ctx->bc.flags, fl);
+}
+
 int shell_run(struct boot_ctx *ctx)
 {
     printf("barebox command line. type `help'. `exit' returns.\n");
@@ -246,22 +346,17 @@ int shell_run(struct boot_ctx *ctx)
             act = cmd_boot(ctx, a1);
             if (act)
                 return act;
-        } else if (strcmp(cmd, "cfg") == 0) {
-            if (!a1) {
-                printf("flags=0x%x valid=%d flash=%d sd=%d\n",
-                       ctx->bc.flags, ctx->bc.valid,
-                       ctx->bc_from_flash, ctx->bc_from_sd);
-            } else if (strcmp(a1, "flash") == 0)
-                printf("cfg flash rc=%d\n",
-                       eboot_store_bootcfg(&ctx->emmc, ctx->bc.flags,
-                                           ctx->bc.devflags, ctx->bc.model));
-            else if (strcmp(a1, "sd") == 0)
-                printf("cfg sd rc=%d\n",
-                       eboot_store_bootcfg_sd(&ctx->sdfat, ctx->bc.flags,
-                                              ctx->bc.devflags, ctx->bc.model));
-            else
-                printf("cfg [flash|sd]\n");
-        } else if (strcmp(cmd, "go") == 0) {
+        } else if (strcmp(cmd, "cfg") == 0)
+            cmd_cfg(ctx, a1, a2);
+        else if (strcmp(cmd, "ls") == 0)
+            cmd_ls(ctx);
+        else if (strcmp(cmd, "rtc") == 0)
+            cmd_rtc();
+        else if (strcmp(cmd, "power") == 0)
+            cmd_power(ctx);
+        else if (strcmp(cmd, "beep") == 0)
+            ebl_beep(a1 ? parse_u32(a1) : 40);
+        else if (strcmp(cmd, "go") == 0) {
             if (!a1)
                 printf("go ADDR\n");
             else

@@ -57,24 +57,40 @@ int eboot_store_bootcfg(struct mmc_dev *emmc, u32 flags, u32 devflags, u32 model
     return 0;
 }
 
-int eboot_store_bootcfg_sd(struct fat_fs *sd, u32 flags, u32 devflags, u32 model)
+int eboot_store_bootcfg_sd(struct fat_fs *sd, const char *name,
+                           u32 flags, u32 devflags, u32 model)
 {
     u8 sec[512];
 
     if (!sd || !sd->ready)
         return -1;
+    if (!name || !name[0])
+        name = SD_BOOTCFG_NAME;
     bootcfg_build(flags, devflags, model, sec);
-    return fat_write(sd, SD_BOOTCFG_NAME, sec, 512);
+    return fat_write(sd, name, sec, 512);
 }
 
-int eboot_store_devinfo_sd(struct fat_fs *sd, const char *model, u32 version)
+int eboot_store_devinfo(struct mmc_dev *emmc, const char *model, u32 version)
+{
+    u8 sec[512];
+
+    if (!emmc || !emmc->ready)
+        return -1;
+    devinfo_build(model ? model : "EDSH6", version ? version : 4, sec);
+    return mmc_write(emmc, EMMC_DEVINFO_LBA, 1, sec);
+}
+
+int eboot_store_devinfo_sd(struct fat_fs *sd, const char *name,
+                           const char *model, u32 version)
 {
     u8 sec[512];
 
     if (!sd || !sd->ready)
         return -1;
+    if (!name || !name[0])
+        name = SD_DEVINFO_NAME;
     devinfo_build(model ? model : "EDSH6", version ? version : 4, sec);
-    return fat_write(sd, SD_DEVINFO_NAME, sec, 512);
+    return fat_write(sd, name, sec, 512);
 }
 
 int eboot_store_factory(struct mmc_dev *emmc)
@@ -226,7 +242,7 @@ static void load_bootcfg(struct boot_ctx *ctx)
 {
     u8 sec[512];
     struct fat_file f;
-    int from_sd = 0, ok = 0;
+    int ok = 0;
 
     memset(&ctx->bc, 0, sizeof(ctx->bc));
     ctx->bc_from_flash = 0;
@@ -254,7 +270,6 @@ static void load_bootcfg(struct boot_ctx *ctx)
     printf("LoadBootConfigSub()++\n");
     if (fat_try_find(&ctx->sdfat, ctx->ident.cfg_name, &f) == 0 ||
         fat_try_find(&ctx->sdfat, SD_BOOTCFG_NAME, &f) == 0) {
-        from_sd = 1;
         if (fat_read(&ctx->sdfat, &f, sec, 512) >= 48 &&
             bootcfg_parse(sec, &ctx->bc) == 0) {
             ok = 1;
@@ -392,14 +407,19 @@ int eboot_store_bootcfg(struct mmc_dev *e, u32 a, u32 b, u32 c)
     return -1;
 }
 int eboot_reset_default_bootcfg(struct mmc_dev *e) { (void)e; return -1; }
-int eboot_store_bootcfg_sd(struct fat_fs *s, u32 a, u32 b, u32 c)
+int eboot_store_bootcfg_sd(struct fat_fs *s, const char *n, u32 a, u32 b, u32 c)
 {
-    (void)s;(void)a;(void)b;(void)c;
+    (void)s;(void)n;(void)a;(void)b;(void)c;
     return -1;
 }
-int eboot_store_devinfo_sd(struct fat_fs *s, const char *m, u32 v)
+int eboot_store_devinfo(struct mmc_dev *e, const char *m, u32 v)
 {
-    (void)s;(void)m;(void)v;
+    (void)e;(void)m;(void)v;
+    return -1;
+}
+int eboot_store_devinfo_sd(struct fat_fs *s, const char *n, const char *m, u32 v)
+{
+    (void)s;(void)n;(void)m;(void)v;
     return -1;
 }
 int eboot_store_factory(struct mmc_dev *e) { (void)e; return -1; }

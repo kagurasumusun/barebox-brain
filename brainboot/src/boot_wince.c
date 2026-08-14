@@ -138,9 +138,11 @@ int boot_wince_from_emmc(struct mmc_dev *emmc, u32 offset, u32 size_hint)
             size = maxb;
     }
     nsec = (size + 511) / 512;
+    printf("INFO: Reading NK dwActualLength=[0x%x]\n", size);
     printf("reading NK %u sectors from eMMC LBA %u ...\n", nsec, lba);
     if (mmc_read(emmc, lba, nsec, stage))
         return -3;
+    printf("Copy of NK completed 100%%\n");
     return boot_wince_from_mem(stage, size);
 }
 

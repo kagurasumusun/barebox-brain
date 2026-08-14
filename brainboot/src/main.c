@@ -111,6 +111,7 @@ int main(void)
     ctx.dram_bytes = ident_dram_bytes();
 
     ebl_power_read(&pwr);
+    ctx.batt_mv = pwr.batt_mv;
     if (!pwr.vbus)
         printf("USB is not detected\n");
     else
@@ -147,6 +148,12 @@ int main(void)
 
     eboot_load_records(&ctx);
     eboot_probe_card_exe(&ctx);
+    if (ctx.ident.from_devinfo) {
+        printf("SPI_GETBOOTMENAME %s\n", ctx.ident.internal);
+        printf("SPI_GETOEMINFO %s\n", ctx.ident.banner);
+    }
+    if (!ctx.dram_bytes)
+        ctx.dram_bytes = ident_dram_bytes();
     eboot_display_init(&ctx);
 
     printf("Batt Detect\n");
