@@ -21,7 +21,7 @@ static void execute(struct boot_ctx *ctx, int act)
 {
     const char *exe;
 
-    policy_announce_action(act);
+    policy_announce_action(ctx, act);
     switch (act) {
     case ACT_WINCE:
         if (lcd_ready())
@@ -146,6 +146,7 @@ int main(void)
     }
 
     eboot_load_records(&ctx);
+    eboot_probe_card_exe(&ctx);
     eboot_display_init(&ctx);
 
     printf("Batt Detect\n");
@@ -175,7 +176,7 @@ int main(void)
         if (act)
             execute(&ctx, act);
     } else if (policy_want_menu(&ctx)) {
-        printf("BOOTMENU / Engineer / key: showing UI\n");
+        printf("BOOTMENU.BIN / menu=on / key: showing UI\n");
         act = menu_run(&ctx);
         while (act == ACT_SHELL) {
             execute(&ctx, act);

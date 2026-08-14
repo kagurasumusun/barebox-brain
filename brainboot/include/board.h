@@ -60,7 +60,7 @@
 #define SD_BBCONF_NAME          "BRAINBOO.CFG"
 #define SD_BOOTMENU_NAME        "BOOTMENU.BIN"
 
-#define BB_VERSION              "1.4.0"
+#define BB_VERSION              "1.5.0"
 
 #define LCD_WIDTH               854
 #define LCD_HEIGHT              480

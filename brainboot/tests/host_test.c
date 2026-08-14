@@ -102,8 +102,37 @@ static void test_charge_and_fmd(void)
     memset(sec, 0, 512);
     sec[0] = 0x80;
     EXPECT(factory_setting_ok(sec) == 1, "factory flag 0x80");
-    sec[0] = '7'; sec[1] = '0';
-    EXPECT(packed70_setting_ok(sec) == 1, "packed70");
+    factory_setting_build(sec);
+    EXPECT(factory_setting_ok(sec) == 1, "factory build flag 0x80");
+    {
+        static const u8 lba17[12] = {
+            0x37,0x30,0x00,0x00,0xff,0xff,0xff,0xff,0x63,0x04,0x9c,0xfb
+        };
+        static const u8 lba66[16] = {
+            0x37,0x30,0x00,0x00,0xbc,0xd0,0x2b,0x05,
+            0x30,0xee,0x00,0x00,0x41,0x03,0xbe,0xfc
+        };
+        struct packed70 rec;
+        u8 built[16];
+        u32 n = 0;
+        u8 tiny[64];
+        u8 big[4];
+        EXPECT(packed70_parse(lba17, 12, &rec) == 0, "packed70 LBA17");
+        EXPECT(rec.value == 0xffffffffu, "packed70 LBA17 value");
+        EXPECT(packed70_build(0, built, &n) == 0 && n == 12, "packed70 build");
+        EXPECT(packed70_parse(built, n, &rec) == 0, "packed70 build parses");
+        EXPECT(packed70_parse(lba66, 16, &rec) == 0, "packed70 LBA66");
+        EXPECT(rec.nbytes == 16, "packed70 LBA66 16 bytes");
+        EXPECT(rec.value == 0x052bd0bcu, "packed70 LBA66 value");
+        memset(tiny, 0, sizeof(tiny));
+        tiny[3] = 0xea;
+        EXPECT(boot_image_is_os(tiny, 64) == 0, "tiny ARM is not Card BOOT OS");
+        memset(tiny, 0, sizeof(tiny));
+        tiny[3] = 0xea;
+        EXPECT(boot_image_is_os(tiny, CARD_BOOT_MIN_OS) == 1, "1MiB ARM is OS");
+        EXPECT(boot_image_is_os(tiny, CARD_BOOT_MIN_OS - 1) == 0, "just-under 1MiB rejected");
+        (void)big;
+    }
 
     memset(img, 0, sizeof(img));
     for (i = 0; i < 6; i++) {
@@ -337,15 +366,28 @@ static void test_policy(void)
     ctx.bm.valid = 0;
     ctx.bc.valid = 1;
     ctx.bc.flags = BOOTCFG_FLAG_ENGINEER;
-    EXPECT(policy_want_menu(&ctx) == 1, "policy Engineer menu");
+    EXPECT(policy_want_menu(&ctx) == 0, "policy Engineer is not our UI");
+    EXPECT(policy_silent_action(&ctx) == ACT_WINCE, "policy Engineer still NK");
     ctx.bc.flags = BOOTCFG_FLAG_DIAG;
     EXPECT(policy_want_menu(&ctx) == 0, "policy Diag alone is silent");
     EXPECT(policy_silent_action(&ctx) == ACT_DIAGOS, "policy DiagOS");
 
     ctx.bc.flags = 0;
+    ctx.cfg.default_target = BB_DEFAULT_LINUX;
+    EXPECT(policy_silent_action(&ctx) == ACT_WINCE, "policy linux default does not steal silent");
+    ctx.cfg.default_target = BB_DEFAULT_WINCE;
+    ctx.card_exe_os = 1;
+    EXPECT(policy_silent_action(&ctx) == ACT_WINCE, "policy valid CFG ignores EXE");
+    ctx.bc.valid = 0;
+    EXPECT(policy_silent_action(&ctx) == ACT_SDEXE, "policy no CFG + real EXE");
+    ctx.card_exe_os = 0;
+    EXPECT(policy_silent_action(&ctx) == ACT_WINCE, "policy no CFG no EXE is NK");
+
+    ctx.bc.valid = 1;
     ctx.key_held = 1;
     EXPECT(policy_want_menu(&ctx) == 1, "policy key held");
     ctx.key_held = 0;
+    ctx.cfg.loaded = 1;
     ctx.cfg.menu_force = 1;
     EXPECT(policy_want_menu(&ctx) == 1, "policy cfg menu=on");
 

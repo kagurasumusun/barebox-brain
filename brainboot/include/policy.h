@@ -4,7 +4,6 @@
 
 #include "ui.h"
 
-/* Same numeric actions as menu.c */
 #define ACT_WINCE     1
 #define ACT_LINUX     2
 #define ACT_DIAGOS    3
@@ -16,24 +15,28 @@
 #define ACT_NONE      0
 
 /*
- * Stock EBOOT decision (BOOT.md), plus the BOOTMENU.BIN gate.
+ * Two layers. They must not mix.
  *
- * Menu is shown only when at least one of:
- *   - BOOTMENU.BIN is present, checksums, and FLAG_SHOW is set
- *   - BootConfig Engineer (0x10) is set
- *   - a menu key is held (Enter / Esc / UART char)
- *   - BRAINBOO.CFG has menu=on
+ * Layer A — stock EBOOT (silent, always the default):
+ *   SD EDSH6CFG.BIN  >  flash LBA2  >  no CFG
+ *   DIAG (0x01)      → DiagOS
+ *   no CFG           → Check Card BOOT; real OS EXE (≥1 MiB) only
+ *   else             → NK
+ *   Engineer (0x10) is DiagApp's flag after DiagOS. It is NOT our UI.
+ *   DevMode  (0x20) is printed, not a boot target.
  *
- * Otherwise the path is silent: DiagBoot → DiagOS, else NK, with the
- * documented serial strings. Linux is silent only if BRAINBOO.CFG
- * default=linux (not a stock EBOOT path).
+ * Layer B — brainboot overlay (opt-in only):
+ *   BOOTMENU.BIN SHOW  |  BRAINBOO.CFG menu=on  |  held key / UART
+ *   BRAINBOO.CFG default=linux is the UI countdown default only.
+ *   It never overrides a silent stock decision.
  */
 
 int  policy_want_menu(const struct boot_ctx *ctx);
 int  policy_want_shell(const struct boot_ctx *ctx);
+int  policy_stock_action(const struct boot_ctx *ctx);
 int  policy_silent_action(const struct boot_ctx *ctx);
 void policy_announce_devinfo(const struct boot_ctx *ctx);
 void policy_announce_bootcfg(const struct boot_ctx *ctx, int from_sd, int ok);
-void policy_announce_action(int act);
+void policy_announce_action(const struct boot_ctx *ctx, int act);
 
 #endif

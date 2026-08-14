@@ -70,9 +70,32 @@ struct boot_status {
 };
 
 int  chargeinfo_parse(const u8 sec[512], struct charge_info *out);
+int  chargeinfo_build(const struct charge_info *in, u8 sec[512]);
 int  bootstatus_parse(const u8 sec[512], struct boot_status *out);
-int  factory_setting_ok(const u8 sec[512]);
+int  bootstatus_build(u32 status, u8 sec[512]);
+
+#define PACKED70_MAGIC          0x00003037u
+#define FACTORY_FLAG_VALID      0x80u
+#define CARD_BOOT_MIN_OS        0x00100000u  /* 1 MiB — our EXE is ~55 KiB */
+
+struct packed70 {
+    u32  magic;
+    u32  value;
+    u32  value2;
+    u32  nbytes;    /* 12 or 16 */
+    u16  sum16;
+    u16  nsum16;
+    int  valid;
+};
+
+int  packed70_parse(const u8 *p, u32 len, struct packed70 *out);
+int  packed70_build(u32 value, u8 *p, u32 *nbytes);
 int  packed70_setting_ok(const u8 sec[512]);
+int  factory_setting_ok(const u8 sec[512]);
+int  factory_setting_parse(const u8 sec[512], struct packed70 *inner);
+int  factory_setting_build(u8 sec[512]);
+
+int  boot_image_is_os(const u8 *buf, u32 len);
 
 int  boot_wince_from_emmc(struct mmc_dev *emmc, u32 offset, u32 size_hint);
 int  boot_wince_from_mem(const u8 *buf, u32 len);

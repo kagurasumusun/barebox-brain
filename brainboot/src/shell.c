@@ -4,6 +4,7 @@
 #include "board.h"
 #include "ident.h"
 #include "keyboard.h"
+#include "eboot.h"
 
 #ifdef HOST_BUILD
 int shell_run(struct boot_ctx *ctx) { (void)ctx; return ACT_NONE; }
@@ -105,6 +106,7 @@ static void cmd_help(void)
     printf("  md [-l] ADDR [N]     memory dump (32-bit)\n");
     printf("  mw ADDR VAL          memory write 32-bit\n");
     printf("  boot wince|linux|diag|sdexe|nk2\n");
+    printf("  cfg [flash|sd]        show / write BootConfig\n");
     printf("  go ADDR              branch to address\n");
     printf("  reset                watchdog reset\n");
     printf("  poweroff             HW_POWER_RESET.PWD\n");
@@ -139,7 +141,11 @@ static void cmd_detect(struct boot_ctx *ctx)
     printf("ident      %s / %s / %s known=%d\n",
            ctx->ident.retail, ctx->ident.internal, ctx->ident.gen,
            ctx->ident.known);
-    printf("bootcfg    valid=%d flags=0x%x\n", ctx->bc.valid, ctx->bc.flags);
+    printf("bootcfg    valid=%d flags=0x%x flash=%d sd=%d\n",
+           ctx->bc.valid, ctx->bc.flags, ctx->bc_from_flash, ctx->bc_from_sd);
+    printf("factory    %d user=%d develop=%d system=%d card_os=%d\n",
+           ctx->factory_ok, ctx->user_ok, ctx->develop_ok, ctx->system_ok,
+           ctx->card_exe_os);
     printf("bootmenu   valid=%d flags=0x%x\n", ctx->bm.valid, ctx->bm.flags);
 }
 
@@ -239,6 +245,21 @@ int shell_run(struct boot_ctx *ctx)
             act = cmd_boot(ctx, a1);
             if (act)
                 return act;
+        } else if (strcmp(cmd, "cfg") == 0) {
+            if (!a1) {
+                printf("flags=0x%x valid=%d flash=%d sd=%d\n",
+                       ctx->bc.flags, ctx->bc.valid,
+                       ctx->bc_from_flash, ctx->bc_from_sd);
+            } else if (strcmp(a1, "flash") == 0)
+                printf("cfg flash rc=%d\n",
+                       eboot_store_bootcfg(&ctx->emmc, ctx->bc.flags,
+                                           ctx->bc.devflags, ctx->bc.model));
+            else if (strcmp(a1, "sd") == 0)
+                printf("cfg sd rc=%d\n",
+                       eboot_store_bootcfg_sd(&ctx->sdfat, ctx->bc.flags,
+                                              ctx->bc.devflags, ctx->bc.model));
+            else
+                printf("cfg [flash|sd]\n");
         } else if (strcmp(cmd, "go") == 0) {
             if (!a1)
                 printf("go ADDR\n");

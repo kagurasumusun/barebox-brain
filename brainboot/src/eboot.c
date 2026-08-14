@@ -57,6 +57,36 @@ int eboot_store_bootcfg(struct mmc_dev *emmc, u32 flags, u32 devflags, u32 model
     return 0;
 }
 
+int eboot_store_bootcfg_sd(struct fat_fs *sd, u32 flags, u32 devflags, u32 model)
+{
+    u8 sec[512];
+
+    if (!sd || !sd->ready)
+        return -1;
+    bootcfg_build(flags, devflags, model, sec);
+    return fat_write(sd, SD_BOOTCFG_NAME, sec, 512);
+}
+
+int eboot_store_factory(struct mmc_dev *emmc)
+{
+    u8 sec[512];
+
+    if (!emmc || !emmc->ready)
+        return -1;
+    factory_setting_build(sec);
+    return mmc_write(emmc, EMMC_FACTORY_LBA, 1, sec);
+}
+
+int eboot_store_charge(struct mmc_dev *emmc, const struct charge_info *ci)
+{
+    u8 sec[512];
+
+    if (!emmc || !emmc->ready || !ci)
+        return -1;
+    chargeinfo_build(ci, sec);
+    return mmc_write(emmc, EMMC_CHARGE_LBA, 1, sec);
+}
+
 int eboot_reset_default_bootcfg(struct mmc_dev *emmc)
 {
     printf("\nResetting factory default configuration...\n");
@@ -132,24 +162,34 @@ static void load_settings(struct boot_ctx *ctx)
 
     printf("LoadFactorySetting()++\n");
     ctx->factory_ok = 0;
-    if (read_lba(&ctx->emmc, EMMC_FACTORY_LBA, sec) == 0)
-        ctx->factory_ok = factory_setting_ok(sec);
+    memset(&ctx->factory, 0, sizeof(ctx->factory));
+    if (read_lba(&ctx->emmc, EMMC_FACTORY_LBA, sec) == 0 &&
+        factory_setting_parse(sec, &ctx->factory) == 0)
+        ctx->factory_ok = 1;
     printf("LoadFactorySetting()-- bRet=%d\n", ctx->factory_ok);
     if (!ctx->factory_ok)
         printf("ERROR: Load Factory Setting\n");
 
     printf("LoadUserSetting()++\n");
     ctx->user_ok = 0;
-    if (read_lba(&ctx->emmc, EMMC_USER_LBA, sec) == 0)
-        ctx->user_ok = packed70_setting_ok(sec);
+    memset(&ctx->user, 0, sizeof(ctx->user));
+    if (read_lba(&ctx->emmc, EMMC_USER_LBA, sec) == 0 &&
+        sec[0] == '7' && sec[1] == '0') {
+        ctx->user_ok = 1;
+        packed70_parse(sec, 512, &ctx->user);
+    }
     printf("LoadUserSetting()-- bRet=%d\n", ctx->user_ok);
     if (!ctx->user_ok)
         printf("ERROR: Load User Setting\n");
 
     printf("LoadDevelopSetting()++\n");
     ctx->develop_ok = 0;
-    if (read_lba(&ctx->emmc, EMMC_DEVELOP_LBA, sec) == 0)
-        ctx->develop_ok = packed70_setting_ok(sec);
+    memset(&ctx->develop, 0, sizeof(ctx->develop));
+    if (read_lba(&ctx->emmc, EMMC_DEVELOP_LBA, sec) == 0 &&
+        sec[0] == '7' && sec[1] == '0') {
+        ctx->develop_ok = 1;
+        packed70_parse(sec, 512, &ctx->develop);
+    }
     printf("LoadDevelopSetting()-- bRet=%d\n", ctx->develop_ok);
     if (!ctx->develop_ok)
         printf("ERROR: Load Develop Setting\n");
@@ -161,8 +201,10 @@ static void load_system_setting(struct boot_ctx *ctx)
 
     printf("LoadSystemSetting()++\n");
     ctx->system_ok = 0;
-    if (read_lba(&ctx->emmc, EMMC_SYSTEM_LBA, sec) == 0)
-        ctx->system_ok = packed70_setting_ok(sec);
+    memset(&ctx->system, 0, sizeof(ctx->system));
+    if (read_lba(&ctx->emmc, EMMC_SYSTEM_LBA, sec) == 0 &&
+        packed70_parse(sec, 512, &ctx->system) == 0)
+        ctx->system_ok = 1;
     printf("LoadSystemSetting()-- bRet=%d\n", ctx->system_ok);
     if (!ctx->system_ok)
         printf("ERROR: Load System Setting\n");
@@ -175,15 +217,25 @@ static void load_bootcfg(struct boot_ctx *ctx)
     int from_sd = 0, ok = 0;
 
     memset(&ctx->bc, 0, sizeof(ctx->bc));
+    ctx->bc_from_flash = 0;
+    ctx->bc_from_sd = 0;
 
     if (read_lba(&ctx->emmc, EMMC_BOOTCFG_LBA, sec) == 0 &&
         bootcfg_parse(sec, &ctx->bc) == 0) {
         printf("INFO: Successfully loaded boot configuration from SDHC\n");
         ok = 1;
+        ctx->bc_from_flash = 1;
     } else {
         printf("ERROR: LoadBootCFG: failed to load configuration.\n");
         printf("ERROR: flash initialization failed - loading bootloader defaults...\n");
-        (void)eboot_reset_default_bootcfg(&ctx->emmc);
+        if (eboot_reset_default_bootcfg(&ctx->emmc) == 0) {
+            ctx->bc.flags = 0;
+            ctx->bc.devflags = 0;
+            ctx->bc.model = 0;
+            ctx->bc.valid = 1;
+            ctx->bc_from_flash = 1;
+            ok = 1;
+        }
     }
 
     printf("LoadBootConfig()++\n");
@@ -192,16 +244,15 @@ static void load_bootcfg(struct boot_ctx *ctx)
         fat_try_find(&ctx->sdfat, SD_BOOTCFG_NAME, &f) == 0) {
         from_sd = 1;
         if (fat_read(&ctx->sdfat, &f, sec, 512) >= 48 &&
-            bootcfg_parse(sec, &ctx->bc) == 0)
+            bootcfg_parse(sec, &ctx->bc) == 0) {
             ok = 1;
-        else
+            ctx->bc_from_sd = 1;
+        } else
             printf("Cannot Read Boot Config File!!\n");
-        if (ok)
-            printf("Find Boot Config File!!\n");
     }
-    printf("LoadBootConfigSub()-- bRet=%d\n", ok && from_sd);
-    printf("LoadBootConfig()-- bRet=%d\n", ok && from_sd);
-    policy_announce_bootcfg(ctx, from_sd, ok);
+    printf("LoadBootConfigSub()-- bRet=%d\n", ctx->bc_from_sd);
+    printf("LoadBootConfig()-- bRet=%d\n", ctx->bc_from_sd);
+    policy_announce_bootcfg(ctx, ctx->bc_from_sd, ok);
 }
 
 static void load_devinfo(struct boot_ctx *ctx)
@@ -238,6 +289,28 @@ void eboot_load_records(struct boot_ctx *ctx)
     load_bootcfg(ctx);
     load_devinfo(ctx);
     load_charge(ctx);
+}
+
+void eboot_probe_card_exe(struct boot_ctx *ctx)
+{
+    struct fat_file f;
+    u8 head[512];
+    const char *name;
+
+    ctx->card_exe_os = 0;
+    ctx->card_exe_size = 0;
+    name = ctx->ident.exe_name[0] ? ctx->ident.exe_name : SD_BOOTEXE_NAME;
+    if (fat_try_find(&ctx->sdfat, name, &f) != 0 &&
+        fat_try_find(&ctx->sdfat, SD_BOOTEXE_NAME, &f) != 0)
+        return;
+    ctx->card_exe_size = f.size;
+    /* Our own EDSH6EXE.BIN is ~55 KiB. Stock NK/DiagOS wrappers are ≥ 1 MiB. */
+    if (f.size < CARD_BOOT_MIN_OS)
+        return;
+    if (fat_read(&ctx->sdfat, &f, head, 512) < 16)
+        return;
+    if (boot_image_is_os(head, f.size))
+        ctx->card_exe_os = 1;
 }
 
 void eboot_display_init(struct boot_ctx *ctx)

@@ -6,6 +6,7 @@
 #include "policy.h"
 #include "shell.h"
 #include "bootmenu.h"
+#include "eboot.h"
 
 static int wait_key(int aborted)
 {
@@ -197,7 +198,7 @@ static int diagnostics(struct boot_ctx *ctx)
 
 static int bootcfg_editor(struct boot_ctx *ctx)
 {
-    const char *items[12];
+    const char *items[14];
     char row[8][40];
     int sel = 0, n;
 
@@ -221,12 +222,13 @@ static int bootcfg_editor(struct boot_ctx *ctx)
         items[n] = row[n]; n++;
         items[n++] = "Save BRAINBOO.CFG to SD";
         items[n++] = "Write EDSH6CFG.BIN to SD";
+        items[n++] = "Write BootConfig to eMMC LBA2";
         items[n++] = "Write BOOTMENU.BIN (show)";
         items[n++] = "Write BOOTMENU.BIN (hide)";
         items[n++] = "Back";
 
         ui_panel(ctx, "Boot Configuration", items, n, sel,
-                 "ENTER toggles / saves.\nLeft/Right change numbers.\nStock checksum rule used.");
+                 "ENTER toggles / saves.\nLeft/Right change numbers.\nDiag-compatible checksum.");
         {
             int k = keyboard_get_timeout(60000);
             int r = pick(&sel, n, k);
@@ -259,19 +261,27 @@ static int bootcfg_editor(struct boot_ctx *ctx)
                     printf("save cfg rc=%d\n", rc);
                     keyboard_get_timeout(4000);
                 } else if (sel == 7) {
-                    u8 sec[512];
-                    int rc;
-                    bootcfg_build(ctx->bc.flags, ctx->bc.devflags, ctx->bc.model, sec);
-                    rc = ctx->sdfat.ready ?
-                         fat_write(&ctx->sdfat, SD_BOOTCFG_NAME, sec, 512) : -1;
+                    int rc = eboot_store_bootcfg_sd(&ctx->sdfat, ctx->bc.flags,
+                                                    ctx->bc.devflags, ctx->bc.model);
                     ui_message(ctx, "Write EDSH6CFG.BIN",
-                               rc ? "FAILED" : "Wrote EDSH6CFG.BIN (ones-complement sum)");
+                               rc ? "FAILED" : "Wrote EDSH6CFG.BIN (Diag-compatible)");
                     printf("save edsh6cfg rc=%d flags=0x%x\n", rc, ctx->bc.flags);
                     keyboard_get_timeout(4000);
-                } else if (sel == 8 || sel == 9) {
+                } else if (sel == 8) {
+                    int rc = eboot_store_bootcfg(&ctx->emmc, ctx->bc.flags,
+                                                 ctx->bc.devflags, ctx->bc.model);
+                    if (rc == 0) {
+                        ctx->bc.valid = 1;
+                        ctx->bc_from_flash = 1;
+                    }
+                    ui_message(ctx, "Write eMMC LBA2",
+                               rc ? "FAILED" : "Wrote flash BootConfig (Diag-compatible)");
+                    printf("save flash cfg rc=%d flags=0x%x\n", rc, ctx->bc.flags);
+                    keyboard_get_timeout(4000);
+                } else if (sel == 9 || sel == 10) {
                     u8 sec[512];
                     int rc;
-                    u32 fl = (sel == 8) ? BOOTMENU_FLAG_SHOW : 0;
+                    u32 fl = (sel == 9) ? BOOTMENU_FLAG_SHOW : 0;
                     bootmenu_build(fl, 0, sec);
                     rc = ctx->sdfat.ready ?
                          fat_write(&ctx->sdfat, BOOTMENU_NAME, sec, 512) : -1;

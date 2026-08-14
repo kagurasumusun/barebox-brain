@@ -253,12 +253,133 @@ int bootstatus_parse(const u8 sec[512], struct boot_status *out)
     return 0;
 }
 
-int factory_setting_ok(const u8 sec[512])
+static void w16le(u8 *p, u16 v)
 {
-    return sec[0] == 0x80;
+    p[0] = (u8)v;
+    p[1] = (u8)(v >> 8);
+}
+
+static void w32le(u8 *p, u32 v)
+{
+    p[0] = (u8)v;
+    p[1] = (u8)(v >> 8);
+    p[2] = (u8)(v >> 16);
+    p[3] = (u8)(v >> 24);
+}
+
+int chargeinfo_build(const struct charge_info *in, u8 sec[512])
+{
+    memset(sec, 0, 512);
+    memcpy(sec, CHARGE_MAGIC, 30);
+    w32le(sec + 0x20, in->start_count[0]);
+    w32le(sec + 0x24, in->complete_count[0]);
+    w32le(sec + 0x28, in->temp_error_count[0]);
+    w32le(sec + 0x2c, in->total_time[0]);
+    w32le(sec + 0x30, in->start_count[1]);
+    w32le(sec + 0x34, in->complete_count[1]);
+    w32le(sec + 0x38, in->temp_error_count[1]);
+    w32le(sec + 0x3c, in->total_time[1]);
+    return 0;
+}
+
+int bootstatus_build(u32 status, u8 sec[512])
+{
+    memset(sec, 0, 512);
+    memcpy(sec, BOOTSTATUS_MAGIC, 30);
+    w32le(sec + 0x20, status);
+    return 0;
+}
+
+/*
+ * Sharp packed "70" record (LBA 17/18/65 = 12 bytes, LBA 66 = 16 bytes):
+ *   +0  u32 magic 0x00003037
+ *   +4  payload (4 or 8 bytes)
+ *   +8/+12  sum16(bytes before checksum) / ones-complement
+ */
+int packed70_parse(const u8 *p, u32 len, struct packed70 *out)
+{
+    u32 try_n;
+
+    memset(out, 0, sizeof(*out));
+    if (len < 12 || r32le(p) != PACKED70_MAGIC)
+        return -1;
+    for (try_n = 12; try_n <= 16 && try_n <= len; try_n += 4) {
+        u16 s = (u16)p[try_n - 4] | ((u16)p[try_n - 3] << 8);
+        u16 ns = (u16)p[try_n - 2] | ((u16)p[try_n - 1] << 8);
+        if (s != sum16(p, try_n - 4))
+            continue;
+        if (ns != (u16)((0xffffu - s) & 0xffffu))
+            continue;
+        out->magic = PACKED70_MAGIC;
+        out->value = r32le(p + 4);
+        out->value2 = (try_n == 16) ? r32le(p + 8) : 0;
+        out->nbytes = try_n;
+        out->sum16 = s;
+        out->nsum16 = ns;
+        out->valid = 1;
+        return 0;
+    }
+    return -2;
+}
+
+int packed70_build(u32 value, u8 *p, u32 *nbytes)
+{
+    u16 s, ns;
+
+    w32le(p, PACKED70_MAGIC);
+    w32le(p + 4, value);
+    s = sum16(p, 8);
+    ns = (u16)((0xffffu - s) & 0xffffu);
+    w16le(p + 8, s);
+    w16le(p + 10, ns);
+    if (nbytes)
+        *nbytes = 12;
+    return 0;
 }
 
 int packed70_setting_ok(const u8 sec[512])
 {
-    return sec[0] == '7' && sec[1] == '0';
+    struct packed70 rec;
+    return packed70_parse(sec, 512, &rec) == 0;
+}
+
+int factory_setting_ok(const u8 sec[512])
+{
+    /* REGIONS.md: first byte 0x80 is the factory-valid flag Diag writes. */
+    return sec[0] == FACTORY_FLAG_VALID;
+}
+
+int factory_setting_parse(const u8 sec[512], struct packed70 *inner)
+{
+    memset(inner, 0, sizeof(*inner));
+    if (!factory_setting_ok(sec))
+        return -1;
+    if (r32le(sec + 4) == PACKED70_MAGIC)
+        packed70_parse(sec + 4, 508, inner);
+    return 0;
+}
+
+int factory_setting_build(u8 sec[512])
+{
+    memset(sec, 0, 512);
+    sec[0] = FACTORY_FLAG_VALID;
+    sec[1] = 0x01; /* same extra byte as the repaired eMMC */
+    return 0;
+}
+
+int boot_image_is_os(const u8 *buf, u32 len)
+{
+    struct b000ff_hdr hdr;
+    const u8 *pay = NULL;
+
+    if (len < CARD_BOOT_MIN_OS)
+        return 0;
+    if (ecec_probe(buf, len, NULL) == 0)
+        return 1;
+    if (b000ff_parse(buf, len, &hdr, &pay) == 0 &&
+        hdr.image_size >= CARD_BOOT_MIN_OS)
+        return 1;
+    if (len > 16 && (buf[3] == 0xea || buf[3] == 0xe5))
+        return 1;
+    return 0;
 }

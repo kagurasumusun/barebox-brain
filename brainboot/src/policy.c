@@ -6,9 +6,7 @@ int policy_want_menu(const struct boot_ctx *ctx)
 {
     if (ctx->key_held)
         return 1;
-    if (ctx->cfg.menu_force)
-        return 1;
-    if (ctx->bc.valid && (ctx->bc.flags & BOOTCFG_FLAG_ENGINEER))
+    if (ctx->cfg.loaded && ctx->cfg.menu_force)
         return 1;
     if (ctx->bm.valid && (ctx->bm.flags & BOOTMENU_FLAG_SHOW))
         return 1;
@@ -22,19 +20,19 @@ int policy_want_shell(const struct boot_ctx *ctx)
     return 0;
 }
 
-int policy_silent_action(const struct boot_ctx *ctx)
+int policy_stock_action(const struct boot_ctx *ctx)
 {
     if (ctx->bc.valid && (ctx->bc.flags & BOOTCFG_FLAG_DIAG))
         return ACT_DIAGOS;
-    if (ctx->cfg.default_target == BB_DEFAULT_LINUX)
-        return ACT_LINUX;
-    if (ctx->cfg.default_target == BB_DEFAULT_DIAG)
-        return ACT_DIAGOS;
-    if (ctx->cfg.default_target == BB_DEFAULT_SDEXE)
+    if (!ctx->bc.valid && ctx->card_exe_os)
         return ACT_SDEXE;
-    if (ctx->cfg.default_target == BB_DEFAULT_NONE)
-        return ACT_NONE;
     return ACT_WINCE;
+}
+
+int policy_silent_action(const struct boot_ctx *ctx)
+{
+    /* Silent path is stock EBOOT only. BRAINBOO.CFG default is UI-only. */
+    return policy_stock_action(ctx);
 }
 
 void policy_announce_devinfo(const struct boot_ctx *ctx)
@@ -48,22 +46,24 @@ void policy_announce_devinfo(const struct boot_ctx *ctx)
 void policy_announce_bootcfg(const struct boot_ctx *ctx, int from_sd, int ok)
 {
     (void)ctx;
-    if (ok)
+    if (from_sd && ok) {
+        printf("Find Boot Config File!!\n");
         printf("Boot Config OK!!\n");
-    (void)from_sd;
+        return;
+    }
+    if (!from_sd && ok)
+        printf("Boot Config OK!!\n");
 }
 
-void policy_announce_action(int act)
+void policy_announce_action(const struct boot_ctx *ctx, int act)
 {
     switch (act) {
     case ACT_DIAGOS:
         printf("Fast Diag Boot!!!\n");
         break;
     case ACT_WINCE:
-        printf("INFO: Check Card BOOT\n");
-        break;
-    case ACT_NK2:
-        printf("INFO: Check Card BOOT\n");
+        if (!ctx->bc.valid)
+            printf("INFO: Check Card BOOT\n");
         break;
     case ACT_SDEXE:
         printf("INFO: Check Card BOOT\n");
@@ -75,4 +75,6 @@ void policy_announce_action(int act)
     default:
         break;
     }
+    if (ctx->bc.valid && (ctx->bc.flags & BOOTCFG_FLAG_DEVMODE))
+        printf("Use Dev Mode = 0x%x\n", ctx->bc.flags);
 }

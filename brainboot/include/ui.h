@@ -46,6 +46,14 @@ struct boot_ctx {
     int develop_ok;
     int system_ok;
     int resume;
+    int bc_from_flash;
+    int bc_from_sd;
+    int card_exe_os;
+    u32 card_exe_size;
+    struct packed70 factory;
+    struct packed70 user;
+    struct packed70 develop;
+    struct packed70 system;
     u32 cpu_hz;
     u32 ocotp_lock;
     u32 rtc_seconds;
