@@ -8,6 +8,8 @@
 #include "shell.h"
 #include "ident.h"
 #include "bootmenu.h"
+#include "ebl.h"
+#include "i2c.h"
 
 extern int menu_run(struct boot_ctx *ctx);
 
@@ -50,9 +52,14 @@ static void load_devinfo(struct boot_ctx *ctx)
 {
     u8 sec[512];
     memset(&ctx->di, 0, sizeof(ctx->di));
-    if (ctx->emmc.ready && mmc_read(&ctx->emmc, EMMC_DEVINFO_LBA, 1, sec) == 0)
-        devinfo_parse(sec, &ctx->di);
-    ident_from_devinfo(&ctx->ident, &ctx->di);
+    if (ctx->emmc.ready && mmc_read(&ctx->emmc, EMMC_DEVINFO_LBA, 1, sec) == 0) {
+        int prc = devinfo_parse(sec, &ctx->di);
+        if (prc != 0)
+            printf("DevInfo parse rc=%d magic16='%c%c%c%c' sum=%x\n",
+                   prc, sec[0], sec[1], sec[2], sec[3], sum16(sec, 0x2c));
+    } else if (ctx->emmc.ready) {
+        printf("DevInfo: eMMC read LBA 4 failed\n");
+    }
     policy_announce_devinfo(ctx);
     printf("%s\n", ctx->ident.banner);
 }
@@ -158,15 +165,20 @@ int main(void)
     printf("\n\n======== brainboot v%s ========\n", BB_VERSION);
 
     board_early_init();
+    {
+        struct ebl_state es;
+        ebl_oem_init(&es);
+        ebl_print_state(&es);
+        ctx.rtc_seconds = es.rtc.seconds;
+        ctx.power_sts = es.pwr.sts;
+        ctx.edna2_doorbell = es.edna2_doorbell;
+        ctx.i2c0_ctrl = es.i2c0_ctrl;
+    }
     ctx.cpu_hz = board_cpu_hz();
     ctx.ocotp_lock = board_ocotp_lock();
-    ctx.rtc_seconds = board_rtc_seconds();
-    ctx.power_sts = board_power_sts();
     ctx.ocram_ok = board_probe_ocram();
     ctx.dram_ok = board_probe_dram();
     ctx.dram_bytes = ident_dram_bytes();
-    ctx.edna2_doorbell = ident_edna2_doorbell();
-    ctx.i2c0_ctrl = ident_i2c0_ctrl();
     printf("chipid=0x%x cpu=%u Hz ocram=%d dram=%d dram_bytes=%u\n",
            board_chipid(), ctx.cpu_hz, ctx.ocram_ok, ctx.dram_ok,
            ctx.dram_bytes);

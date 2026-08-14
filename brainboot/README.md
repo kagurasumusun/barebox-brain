@@ -30,9 +30,10 @@ It has been:
 * compiled with `arm-none-eabi-gcc` for ARM926EJ-S
 * protocol-tested on the host (BootConfig, DevInfo, BOOTMENU.BIN, B000FF,
   ECEC, MBR/FAT16 read+write, identity lookup, silent/menu policy, CRC32)
-* executed on **qemu-brain** (`-M brain`, QEMU 11.0.3, release
-  `qemu-brain-build-2026-08-14`): silent NK path, `Fast Diag Boot!!!`,
-  and BOOTMENU.BIN SHOW all produced the documented serial lines
+* executed on **qemu-brain** (`-M brain`, QEMU 11.0.3) with the real
+  `emmc-repaired3` image (6 605 935 104 bytes, sha256 beb69fc5…):
+  `DevInfo OK!!`, ECEC NK from LBA 2304, jump to `0x40200000`.
+  Stock EBOOT on the same image reaches `EDNA2_KBD_Entry`.
 
 It has **not** been executed on a physical PW-AJ2 in this workspace.
 

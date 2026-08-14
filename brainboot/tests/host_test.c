@@ -9,6 +9,7 @@
 #include "ident.h"
 #include "bootmenu.h"
 #include "policy.h"
+#include "keyboard.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,21 +36,20 @@ static void test_bootcfg(void)
 
 static void test_devinfo(void)
 {
+    /* First 48 bytes of eMMC LBA 4 (emmc-repaired3, measured). */
+    static const u8 real[48] = {
+        0x53,0x48,0x41,0x52,0x50,0x20,0x45,0x2d,0x44,0x49,0x43,0x54,0x49,0x4f,0x4e,0x41,
+        0x52,0x59,0x20,0x44,0x45,0x56,0x20,0x49,0x4e,0x46,0x4f,0x00,0x00,0x00,0x00,0x00,
+        0x45,0x44,0x53,0x48,0x36,0x00,0x00,0x00,0x04,0x00,0x00,0x00,0xad,0x0a,0x52,0xf5
+    };
     u8 sec[512];
     struct dev_info di;
     memset(sec, 0, 512);
-    memcpy(sec, DEVINFO_MAGIC, 26);
-    memcpy(sec + 0x20, "EDSH6", 5);
-    sec[0x28] = 4;
-    {
-        u16 s = sum16(sec, 0x2c);
-        u16 ns = (u16)((0xffffu - s) & 0xffffu);
-        sec[0x2c] = (u8)s; sec[0x2d] = (u8)(s >> 8);
-        sec[0x2e] = (u8)ns; sec[0x2f] = (u8)(ns >> 8);
-        EXPECT(s == 0x0aad || 1, "devinfo sum computed"); /* value depends on padding */
-        EXPECT(devinfo_parse(sec, &di) == 0, "devinfo parse");
-        EXPECT(di.version == 4, "devinfo version 4");
-    }
+    memcpy(sec, real, 48);
+    EXPECT(sum16(sec, 0x30) == 0x0aad, "devinfo on-disk sum16 inclusive");
+    EXPECT(devinfo_parse(sec, &di) == 0, "devinfo parse real LBA4");
+    EXPECT(di.version == 4, "devinfo version 4");
+    EXPECT(memcmp(di.model, "EDSH6", 5) == 0, "devinfo model EDSH6");
 }
 
 static void test_b000ff(void)
@@ -314,6 +314,19 @@ static void test_config_menu(void)
     EXPECT(c.autoboot == 0, "cfg autoboot 0");
 }
 
+static void test_keyboard_map(void)
+{
+    EXPECT(keyboard_lookup(3, 3) == BK_UP, "EDNA2 col3 row3 is Up");
+    EXPECT(keyboard_lookup(3, 1) == BK_DOWN, "EDNA2 col3 row1 is Down");
+    EXPECT(keyboard_lookup(3, 5) == BK_ENTER, "EDNA2 col3 row5 is Enter");
+    EXPECT(keyboard_lookup(5, 3) == BK_ESC, "EDNA2 col5 row3 is Esc");
+    EXPECT(keyboard_lookup(3, 2) == BK_LEFT, "EDNA2 col3 row2 is Left");
+    EXPECT(keyboard_lookup(3, 4) == BK_RIGHT, "EDNA2 col3 row4 is Right");
+    EXPECT(keyboard_edna2_sc(3, 3) == 0x26, "EDNA2 scancode Up cell");
+    EXPECT(keyboard_lookup(4, 4) == BK_SHIFT, "shift cell");
+    EXPECT(strcmp(brain_key_name(BK_UP), "Up") == 0, "key name Up");
+}
+
 int main(void)
 {
     test_bootcfg();
@@ -328,6 +341,7 @@ int main(void)
     test_ident();
     test_policy();
     test_config_menu();
+    test_keyboard_map();
     printf("%s  fails=%d\n", fails ? "SOME TESTS FAILED" : "ALL HOST TESTS PASSED", fails);
     return fails ? 1 : 0;
 }

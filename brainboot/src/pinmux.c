@@ -74,9 +74,9 @@ void pinmux_init(void)
     /* Debug UART: AUART0/DUART pins are typically bank3. Leave as Boot ROM
      * configured them; we only talk to the already-routed UARTDBG. */
 
-    /* Power enables */
+    /* Power enables. GPIO2.21 is a keyboard ROW in keybd_EDNA2.dll —
+     * do not steal it as SD_POWER (u-boot does; that breaks the matrix). */
     gpio_direction_output(GPIO_EMMC_POWER, 1);
-    gpio_direction_output(GPIO_SD_POWER, 0); /* active low */
     gpio_direction_output(GPIO_LCD_EN0, 1);
     gpio_direction_output(GPIO_LCD_EN1, 1);
     gpio_direction_output(GPIO_LCD_EN2, 1);

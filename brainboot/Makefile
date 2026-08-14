@@ -17,7 +17,8 @@ C_SRC := src/string.c src/delay.c src/uart.c src/gpio.c \
          src/clock.c src/pinmux.c src/ssp_mmc.c src/fat.c src/bootconfig.c \
          src/boot_wince.c src/boot_linux.c src/font.c src/lcd.c src/splash.c \
          src/keyboard.c src/menu.c src/main.c src/ui.c src/config.c \
-         src/ident.c src/bootmenu.c src/policy.c src/shell.c
+         src/ident.c src/bootmenu.c src/policy.c src/shell.c \
+         src/i2c.c src/ebl.c
 S_SRC := src/start.S
 
 C_OBJ := $(patsubst src/%.c,build/%.o,$(C_SRC))
@@ -51,11 +52,11 @@ host: build/host_test
 	./build/host_test
 
 build/host_test: tests/host_test.c src/string.c src/bootconfig.c src/fat.c src/config.c \
-                 src/ident.c src/bootmenu.c src/policy.c
+                 src/ident.c src/bootmenu.c src/policy.c src/keyboard.c
 	@mkdir -p build
 	$(HOSTCC) -std=gnu11 -Wall -Wextra -DHOST_BUILD -Iinclude -no-pie \
 	    -o $@ tests/host_test.c src/string.c src/bootconfig.c src/fat.c src/config.c \
-	        src/ident.c src/bootmenu.c src/policy.c
+	        src/ident.c src/bootmenu.c src/policy.c src/keyboard.c
 
 test: host
 	python3 tests/test_protocol.py

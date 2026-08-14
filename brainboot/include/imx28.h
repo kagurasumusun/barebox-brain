@@ -272,4 +272,66 @@
 
 #define XTAL_FREQ_HZ            24000000u
 
+/* i.MX28 I2C (RM ch.27, PIO used by EBL ProcessPackets) */
+#define HW_I2C_CTRL0            0x000
+#define HW_I2C_TIMING0          0x010
+#define HW_I2C_TIMING1          0x020
+#define HW_I2C_TIMING2          0x030
+#define HW_I2C_CTRL1            0x040
+#define HW_I2C_STAT             0x050
+#define HW_I2C_QUEUECTRL        0x060
+#define HW_I2C_QUEUESTAT        0x070
+#define HW_I2C_QUEUECMD         0x080
+#define HW_I2C_QUEUEDATA        0x090
+#define HW_I2C_DATA             0x0a0
+#define HW_I2C_DEBUG0           0x0b0
+#define HW_I2C_DEBUG1           0x0c0
+#define HW_I2C_VERSION          0x0d0
+
+#define I2C_CTRL0_SFTRST        (1u << 31)
+#define I2C_CTRL0_CLKGATE       (1u << 30)
+#define I2C_CTRL0_RUN           (1u << 29)
+#define I2C_CTRL0_PIO_MODE      (1u << 24)
+#define I2C_CTRL0_RETAIN_CLOCK  (1u << 22)
+#define I2C_CTRL0_POST_SEND_STOP (1u << 21)
+#define I2C_CTRL0_PRE_SEND_START (1u << 20)
+#define I2C_CTRL0_MASTER_MODE   (1u << 19)
+#define I2C_CTRL0_DIRECTION     (1u << 18)
+#define I2C_CTRL1_CLR_GOT_A_NAK (1u << 28)
+#define I2C_CTRL1_DATA_ENGINE_CMPLT (1u << 6)
+#define I2C_CTRL1_NO_SLAVE_ACK  (1u << 5)
+#define I2C_STAT_BUS_BUSY       (1u << 11)
+#define I2C_STAT_GOT_A_NAK      (1u << 28)
+
+/* LRADC */
+#define HW_LRADC_CTRL0          0x000
+#define HW_LRADC_CTRL1          0x010
+#define HW_LRADC_CTRL2          0x020
+#define HW_LRADC_CTRL3          0x030
+#define HW_LRADC_STATUS         0x040
+#define HW_LRADC_CH0            0x050
+#define HW_LRADC_CH7            0x0c0
+#define HW_LRADC_CONVERSION     0x140
+#define LRADC_CTRL0_SFTRST      (1u << 31)
+#define LRADC_CTRL0_CLKGATE     (1u << 30)
+#define LRADC_CTRL0_SCHEDULE(ch) (1u << (ch))
+#define LRADC_CTRL1_IRQ(ch)     (1u << (ch))
+#define LRADC_CH_VALUE_MASK     0x3ffffu
+#define LRADC_CONV_AUTOMATIC    (1u << 20)
+#define LRADC_CONV_BATT_MASK    0x3ffu
+
+/* RTC extras */
+#define HW_RTC_ALARM            0x040
+#define HW_RTC_PERSISTENT2      0x080
+#define RTC_STAT_RTC_PRESENT    (1u << 31)
+#define RTC_STAT_ALARM_PRESENT  (1u << 30)
+
+/* POWER battery */
+#define POWER_BATT_VAL_SHIFT    16
+#define POWER_BATT_VAL_MASK     0x3ffu
+#define POWER_STS_DC_OK         (1u << 9)
+#define POWER_STS_VBUSVALID0    (1u << 1)
+#define POWER_STS_BATT_BO       (1u << 13)
+#define POWER_STS_CHRGSTS       (1u << 11)
+
 #endif

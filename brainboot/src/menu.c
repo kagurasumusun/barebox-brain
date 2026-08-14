@@ -138,17 +138,30 @@ static int file_browser(struct boot_ctx *ctx)
 
 static void kbd_test(struct boot_ctx *ctx)
 {
-    ui_message(ctx, "Keyboard test",
-               "Press keys. ESC exits.\nCodes: 1=Up 2=Down 3=Enter\n4=Esc 5=Left 6=Right");
+    char body[400];
     for (;;) {
-        int k = keyboard_get_timeout(60000);
-        char line[48];
-        if (k == KEY_ESC)
+        struct kbd_event ev;
+        u8 bits[KBD_COLS];
+        int c, r, n = 0;
+        memset(&ev, 0, sizeof(ev));
+        keyboard_scan(bits);
+        n += snprint(body + n, sizeof(body) - (u32)n, "EDNA2 7x7\n");
+        for (c = 0; c < KBD_COLS && n + 24 < (int)sizeof(body); c++) {
+            n += snprint(body + n, sizeof(body) - (u32)n, "%d ", c);
+            for (r = 0; r < KBD_ROWS; r++)
+                n += snprint(body + n, sizeof(body) - (u32)n,
+                             "%c", (bits[c] & (1u << r)) ? '#' : '.');
+            n += snprint(body + n, sizeof(body) - (u32)n, "\n");
+        }
+        if (keyboard_first(&ev))
+            n += snprint(body + n, sizeof(body) - (u32)n, "%s sc=%x\n",
+                         brain_key_name(ev.key), ev.edna2_sc);
+        ui_message(ctx, "Keyboard matrix", body);
+        if (ev.key == BK_ESC || ev.key == BK_HOME)
             return;
-        if (!k)
-            continue;
-        snprint(line, sizeof(line), "last key = %d    ESC to exit", k);
-        ui_message(ctx, "Keyboard test", line);
+        if (uart_tstc() && uart_getc() == 0x1b)
+            return;
+        mdelay(80);
     }
 }
 

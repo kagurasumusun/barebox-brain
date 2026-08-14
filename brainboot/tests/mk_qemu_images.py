@@ -28,7 +28,7 @@ def ones_record(magic: bytes, payload20: bytes) -> bytes:
     sec = bytearray(512)
     sec[0 : len(magic)] = magic
     sec[0x20 : 0x20 + len(payload20)] = payload20
-    s = sum16(sec[0:0x2C])
+    s = (sum16(sec[0:0x2C]) + 0x1FE) & 0xFFFF
     ns = (0xFFFF - s) & 0xFFFF
     put16(sec, 0x2C, s)
     put16(sec, 0x2E, ns)

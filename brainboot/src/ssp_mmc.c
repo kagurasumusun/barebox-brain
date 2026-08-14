@@ -369,6 +369,22 @@ int mmc_init(struct mmc_dev *dev, enum mmc_port port)
 
     ssp_set_clock(dev->base, 96000000u, 24000000u);
     dev->ready = 1;
+    if (!dev->is_sd && dev->capacity_lba < 0x10000u) {
+        u8 ext[512];
+        if (mmc_read_extcsd(dev, ext) == 0) {
+            u32 sec = (u32)ext[212] | ((u32)ext[213] << 8) |
+                      ((u32)ext[214] << 16) | ((u32)ext[215] << 24);
+            if (sec > dev->capacity_lba) {
+                dev->capacity_lba = sec;
+                dev->is_hc = 1;
+                printf("mmc%u: EXT_CSD SEC_COUNT=%u\n", (unsigned)port, sec);
+            }
+            ssp_cmd(dev, 12, 0, RESP_R1, resp);
+            ssp_cmd(dev, CMD16, MMC_BLOCK_SIZE, RESP_R1, resp);
+            /* Drain one sector; EXT_CSD can leave a stale FIFO word. */
+            mmc_read(dev, 0, 1, ext);
+        }
+    }
     printf("mmc%u: %s %s rca=%x lba=%u width=%u\n",
            (unsigned)port, dev->is_sd ? "SD" : "MMC",
            dev->cid.pnm, dev->rca, dev->capacity_lba, (unsigned)dev->bus_width);

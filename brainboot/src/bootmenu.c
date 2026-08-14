@@ -9,7 +9,7 @@ int bootmenu_verify_bytes(const u8 *p)
         return -1;
     s = (u16)p[0x2c] | ((u16)p[0x2d] << 8);
     ns = (u16)p[0x2e] | ((u16)p[0x2f] << 8);
-    if (s != sum16(p, 0x2c))
+    if (s != sum16(p, 0x30))
         return -2;
     if (ns != (u16)((0xffffu - s) & 0xffffu))
         return -3;
@@ -47,7 +47,7 @@ int bootmenu_build(u32 flags, u32 cookie, u8 sec[512])
     sec[0x29] = (u8)(cookie >> 8);
     sec[0x2a] = (u8)(cookie >> 16);
     sec[0x2b] = (u8)(cookie >> 24);
-    s = sum16(sec, 0x2c);
+    s = (u16)((sum16(sec, 0x2c) + 0x1feu) & 0xffffu);
     ns = (u16)((0xffffu - s) & 0xffffu);
     sec[0x2c] = (u8)s;
     sec[0x2d] = (u8)(s >> 8);
