@@ -17,6 +17,7 @@ struct bb_config {
     char zimage[16];
     char dtb[16];
     int  loaded;
+    int  menu_force;
 };
 
 void bb_config_defaults(struct bb_config *c);

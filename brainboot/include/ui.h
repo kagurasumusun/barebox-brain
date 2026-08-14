@@ -7,6 +7,8 @@
 #include "fat.h"
 #include "boot.h"
 #include "config.h"
+#include "ident.h"
+#include "bootmenu.h"
 
 #define COL_BG      RGB565(0, 0, 0)
 #define COL_FG      RGB565(228, 228, 232)
@@ -30,14 +32,20 @@ struct boot_ctx {
     struct mmc_dev sd;
     struct fat_fs sdfat;
     struct boot_config bc;
+    struct boot_menu bm;
     struct dev_info di;
+    struct device_ident ident;
     struct bb_config cfg;
     int ocram_ok;
     int dram_ok;
+    int key_held;
     u32 cpu_hz;
     u32 ocotp_lock;
     u32 rtc_seconds;
     u32 power_sts;
+    u32 dram_bytes;
+    u32 edna2_doorbell;
+    u32 i2c0_ctrl;
 };
 
 void ui_clear(void);

@@ -107,11 +107,26 @@ int boot_wince_from_emmc(struct mmc_dev *emmc, u32 offset, u32 size_hint)
         return -2;
 
     if (size == 0) {
-        /* ECEC physlast-physfirst is not trusted here; read until 32 MiB
-         * using the DiagOS known size as a cap, or the first 16 MiB. */
         size = 0x01000000u;
         if (ecec_probe(head, 512, NULL) == 0)
             printf("ECEC header at eMMC 0x%x\n", offset);
+    }
+    if (ecec_probe(head, 512, NULL) != 0 &&
+        (head[3] == 0xea || head[3] == 0xe5)) {
+        int i, empty = 1;
+        for (i = 16; i < 512; i++) {
+            if (head[i]) {
+                empty = 0;
+                break;
+            }
+        }
+        if (empty)
+            size = 512;
+    }
+    if (emmc->capacity_lba && lba < emmc->capacity_lba) {
+        u32 maxb = (emmc->capacity_lba - lba) * 512u;
+        if (size > maxb)
+            size = maxb;
     }
     nsec = (size + 511) / 512;
     printf("reading NK %u sectors from eMMC LBA %u ...\n", nsec, lba);

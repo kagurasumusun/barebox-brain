@@ -2,9 +2,13 @@
  *
  * Host-side tests for the protocol parsers. No hardware.
  */
+#include "board.h"
 #include "boot.h"
 #include "fat.h"
 #include "config.h"
+#include "ident.h"
+#include "bootmenu.h"
+#include "policy.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -221,6 +225,95 @@ static void test_config(void)
     EXPECT(strstr(out, "default=linux") != NULL, "cfg format default");
 }
 
+static void test_bootmenu(void)
+{
+    u8 sec[512];
+    struct boot_menu bm;
+    bootmenu_build(BOOTMENU_FLAG_SHOW, 0xA5A5A5A5u, sec);
+    EXPECT(bootmenu_verify_bytes(sec) == 0, "bootmenu self-checksum");
+    EXPECT(bootmenu_parse(sec, &bm) == 0, "bootmenu parse");
+    EXPECT(bm.flags == BOOTMENU_FLAG_SHOW, "bootmenu SHOW flag");
+    EXPECT(bm.cookie == 0xA5A5A5A5u, "bootmenu cookie");
+    sec[0x2e] ^= 1;
+    EXPECT(bootmenu_verify_bytes(sec) != 0, "bootmenu rejects bad nsum");
+    bootmenu_build(0, 0, sec);
+    EXPECT(bootmenu_parse(sec, &bm) == 0, "bootmenu hide parses");
+    EXPECT((bm.flags & BOOTMENU_FLAG_SHOW) == 0, "bootmenu hide has no SHOW");
+}
+
+static void test_ident(void)
+{
+    struct dev_info di;
+    struct device_ident id;
+    memset(&di, 0, sizeof(di));
+    memcpy(di.model, "EDSH6", 5);
+    di.version = 4;
+    di.valid = 1;
+    ident_from_devinfo(&id, &di);
+    EXPECT(id.from_devinfo == 1, "ident from devinfo");
+    EXPECT(id.known == 1, "ident EDSH6 known");
+    EXPECT(strcmp(id.retail, "PW-SH6") == 0, "ident EDSH6 -> PW-SH6");
+    EXPECT(strcmp(id.internal, "ED-SH6") == 0, "ident internal ED-SH6");
+    EXPECT(strcmp(id.gen, "gen3_6") == 0, "ident gen3_6");
+    EXPECT(strcmp(id.exe_name, "EDSH6EXE.BIN") == 0, "ident exe name");
+
+    memcpy(di.model, "EDAJ2", 5);
+    ident_from_devinfo(&id, &di);
+    EXPECT(strcmp(id.retail, "PW-AJ2") == 0, "ident EDAJ2 -> PW-AJ2");
+
+    memcpy(di.model, "EDZZ9", 5);
+    ident_from_devinfo(&id, &di);
+    EXPECT(id.known == 0, "ident unknown model not forced");
+    EXPECT(strcmp(id.retail, "UNKNOWN") == 0, "ident unknown retail");
+
+    ident_from_devinfo(&id, NULL);
+    EXPECT(strcmp(id.retail, "UNKNOWN") == 0, "ident missing devinfo");
+}
+
+static void test_policy(void)
+{
+    struct boot_ctx ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    bb_config_defaults(&ctx.cfg);
+    EXPECT(policy_want_menu(&ctx) == 0, "policy default silent");
+    EXPECT(policy_silent_action(&ctx) == ACT_WINCE, "policy default NK");
+
+    ctx.bm.valid = 1;
+    ctx.bm.flags = BOOTMENU_FLAG_SHOW;
+    EXPECT(policy_want_menu(&ctx) == 1, "policy BOOTMENU SHOW");
+    ctx.bm.flags = 0;
+    EXPECT(policy_want_menu(&ctx) == 0, "policy BOOTMENU hide");
+
+    ctx.bm.valid = 0;
+    ctx.bc.valid = 1;
+    ctx.bc.flags = BOOTCFG_FLAG_ENGINEER;
+    EXPECT(policy_want_menu(&ctx) == 1, "policy Engineer menu");
+    ctx.bc.flags = BOOTCFG_FLAG_DIAG;
+    EXPECT(policy_want_menu(&ctx) == 0, "policy Diag alone is silent");
+    EXPECT(policy_silent_action(&ctx) == ACT_DIAGOS, "policy DiagOS");
+
+    ctx.bc.flags = 0;
+    ctx.key_held = 1;
+    EXPECT(policy_want_menu(&ctx) == 1, "policy key held");
+    ctx.key_held = 0;
+    ctx.cfg.menu_force = 1;
+    EXPECT(policy_want_menu(&ctx) == 1, "policy cfg menu=on");
+
+    ctx.cfg.menu_force = 0;
+    ctx.bm.valid = 1;
+    ctx.bm.flags = BOOTMENU_FLAG_SHELL;
+    EXPECT(policy_want_shell(&ctx) == 1, "policy SHELL flag");
+}
+
+static void test_config_menu(void)
+{
+    struct bb_config c;
+    const char *txt = "autoboot=0\ndefault=wince\nmenu=on\n";
+    EXPECT(bb_config_parse(txt, (u32)strlen(txt), &c) == 0, "cfg menu parse");
+    EXPECT(c.menu_force == 1, "cfg menu=on");
+    EXPECT(c.autoboot == 0, "cfg autoboot 0");
+}
+
 int main(void)
 {
     test_bootcfg();
@@ -231,6 +324,10 @@ int main(void)
     test_crc_sum();
     test_fat16();
     test_config();
+    test_bootmenu();
+    test_ident();
+    test_policy();
+    test_config_menu();
     printf("%s  fails=%d\n", fails ? "SOME TESTS FAILED" : "ALL HOST TESTS PASSED", fails);
     return fails ? 1 : 0;
 }

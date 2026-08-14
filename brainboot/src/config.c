@@ -75,6 +75,9 @@ int bb_config_parse(const char *text, u32 len, struct bb_config *c)
             strncpy(c->zimage, eq, sizeof(c->zimage) - 1);
         } else if (strcmp(line, "dtb") == 0) {
             strncpy(c->dtb, eq, sizeof(c->dtb) - 1);
+        } else if (strcmp(line, "menu") == 0) {
+            c->menu_force = (eq[0] == '1' || eq[0] == 'y' || eq[0] == 'Y' ||
+                             strncmp(eq, "on", 2) == 0);
         }
     }
     c->loaded = 1;

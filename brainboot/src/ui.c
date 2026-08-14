@@ -72,19 +72,28 @@ void ui_chrome(const struct boot_ctx *ctx, const char *hint_right)
     ui_clear();
     lcd_text(24, 14, "SHARP", COL_FG, COL_BG);
     lcd_text(80, 14, "BRAIN", COL_ACCENT, COL_BG);
-    lcd_text(128, 14, "PW-AJ2", COL_FG, COL_BG);
+    lcd_text(128, 14, ident_display(&ctx->ident), COL_FG, COL_BG);
     lcd_text(620, 10, "Embedded Bootloader  v" BB_VERSION, COL_DIM, COL_BG);
     lcd_text(620, 22, "Open Today. Extend Forever.", COL_DIM, COL_BG);
     lcd_hline(20, 36, LCD_WIDTH - 40, COL_LINE);
 
     lcd_text_scaled(24, 48, "BRAINBOOT", COL_FG, COL_BG, 3);
-    lcd_text(28, 80, "Embedded Bootloader for SHARP BRAIN PW-AJ2", COL_ACCENT, COL_BG);
+    {
+        char sub[64];
+        snprint(sub, sizeof(sub), "Embedded Bootloader for SHARP BRAIN %s",
+                ident_display(&ctx->ident));
+        lcd_text(28, 80, sub, COL_ACCENT, COL_BG);
+    }
     lcd_text(28, 92, "Open Today. Extend Forever.", COL_DIM, COL_BG);
 
     lcd_text(620, 52, "CPU", COL_DIM, COL_BG);
     lcd_text(668, 52, ": i.MX28 (ARM926EJ-S)", COL_FG, COL_BG);
     lcd_text(620, 66, "RAM", COL_DIM, COL_BG);
-    lcd_text(668, 66, ": 128 MB", COL_FG, COL_BG);
+    if (ctx->dram_bytes)
+        snprint(line, sizeof(line), ": %u MB", ctx->dram_bytes >> 20);
+    else
+        strncpy(line, ": unknown", sizeof(line) - 1);
+    lcd_text(668, 66, line, COL_FG, COL_BG);
     lcd_text(620, 80, "BOOT", COL_DIM, COL_BG);
     fmt_storage(ctx, stor, sizeof(stor));
     snprint(line, sizeof(line), ": %s", stor);
@@ -128,8 +137,17 @@ void ui_home(const struct boot_ctx *ctx, const char **items, int n,
 
     lcd_hline(470, 242, 360, COL_LINE);
     lcd_text(470, 254, "DEVICE INFO", COL_ACCENT, COL_BG);
-    ui_kv(470, 274, "Model", "SHARP BRAIN PW-AJ2");
-    ui_kv(470, 290, "Internal", BOARD_INTERNAL_AA " / " BOARD_INTERNAL_SH);
+    {
+        char model[40], intern[40];
+        snprint(model, sizeof(model), "SHARP BRAIN %s", ident_display(&ctx->ident));
+        if (ctx->ident.known)
+            snprint(intern, sizeof(intern), "%s / %s",
+                    ctx->ident.internal, ctx->ident.gen);
+        else
+            strncpy(intern, ctx->ident.internal, sizeof(intern) - 1);
+        ui_kv(470, 274, "Model", model);
+        ui_kv(470, 290, "Internal", intern);
+    }
     if (ctx->bc.valid && (ctx->bc.flags & BOOTCFG_FLAG_DIAG))
         mode = "Diag";
     else if (ctx->cfg.default_target == BB_DEFAULT_LINUX)

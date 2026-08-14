@@ -3,15 +3,9 @@
 #include "board.h"
 #include "keyboard.h"
 #include "boot.h"
-
-#define ACT_WINCE     1
-#define ACT_LINUX     2
-#define ACT_DIAGOS    3
-#define ACT_SDEXE     4
-#define ACT_NK2       5
-#define ACT_POWEROFF  6
-#define ACT_REBOOT    7
-#define ACT_NONE      0
+#include "policy.h"
+#include "shell.h"
+#include "bootmenu.h"
 
 static int wait_key(int aborted)
 {
@@ -165,22 +159,24 @@ static int diagnostics(struct boot_ctx *ctx)
         "Storage / SoC registers",
         "SD file list / boot file",
         "Keyboard matrix test",
+        "barebox command line",
         "Back",
     };
     int sel = 0;
     for (;;) {
-        ui_panel(ctx, "Diagnostics", items, 5, sel,
+        ui_panel(ctx, "Diagnostics", items, 6, sel,
                  "Probes only. No eMMC writes.");
         {
             int k = keyboard_get_timeout(60000);
-            int r = pick(&sel, 5, k);
-            if (r < 0 || (r > 0 && sel == 4))
+            int r = pick(&sel, 6, k);
+            if (r < 0 || (r > 0 && sel == 5))
                 return ACT_NONE;
             if (r > 0) {
                 if (sel == 0) memtest_run(ctx);
                 else if (sel == 1) show_storage(ctx);
                 else if (sel == 2) file_browser(ctx);
                 else if (sel == 3) kbd_test(ctx);
+                else if (sel == 4) return ACT_SHELL;
             }
         }
     }
@@ -188,7 +184,7 @@ static int diagnostics(struct boot_ctx *ctx)
 
 static int bootcfg_editor(struct boot_ctx *ctx)
 {
-    const char *items[10];
+    const char *items[12];
     char row[8][40];
     int sel = 0, n;
 
@@ -212,6 +208,8 @@ static int bootcfg_editor(struct boot_ctx *ctx)
         items[n] = row[n]; n++;
         items[n++] = "Save BRAINBOO.CFG to SD";
         items[n++] = "Write EDSH6CFG.BIN to SD";
+        items[n++] = "Write BOOTMENU.BIN (show)";
+        items[n++] = "Write BOOTMENU.BIN (hide)";
         items[n++] = "Back";
 
         ui_panel(ctx, "Boot Configuration", items, n, sel,
@@ -256,6 +254,20 @@ static int bootcfg_editor(struct boot_ctx *ctx)
                     ui_message(ctx, "Write EDSH6CFG.BIN",
                                rc ? "FAILED" : "Wrote EDSH6CFG.BIN (ones-complement sum)");
                     printf("save edsh6cfg rc=%d flags=0x%x\n", rc, ctx->bc.flags);
+                    keyboard_get_timeout(4000);
+                } else if (sel == 8 || sel == 9) {
+                    u8 sec[512];
+                    int rc;
+                    u32 fl = (sel == 8) ? BOOTMENU_FLAG_SHOW : 0;
+                    bootmenu_build(fl, 0, sec);
+                    rc = ctx->sdfat.ready ?
+                         fat_write(&ctx->sdfat, BOOTMENU_NAME, sec, 512) : -1;
+                    if (rc == 0)
+                        bootmenu_parse(sec, &ctx->bm);
+                    ui_message(ctx, "Write BOOTMENU.BIN",
+                               rc ? "FAILED" :
+                               (fl ? "Wrote BOOTMENU.BIN SHOW" : "Wrote BOOTMENU.BIN hide"));
+                    printf("save bootmenu rc=%d flags=0x%x\n", rc, fl);
                     keyboard_get_timeout(4000);
                 }
             }

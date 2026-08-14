@@ -51,8 +51,9 @@
 #define SD_DTB_NAME             "IMX28-PWSH6.DTB"
 #define SD_UIMAGE_NAME          "UIMAGE"
 #define SD_BBCONF_NAME          "BRAINBOO.CFG"
+#define SD_BOOTMENU_NAME        "BOOTMENU.BIN"
 
-#define BB_VERSION              "1.1.0"
+#define BB_VERSION              "1.2.0"
 
 #define LCD_WIDTH               854
 #define LCD_HEIGHT              480

@@ -148,6 +148,8 @@ int snprint(char *dst, u32 dstsz, const char *fmt, ...)
             continue;
         }
         fmt++;
+        while (*fmt == '0' || (*fmt >= '1' && *fmt <= '9'))
+            fmt++;
         if (*fmt == 's') {
             const char *s = va_arg(ap, const char *);
             if (!s)

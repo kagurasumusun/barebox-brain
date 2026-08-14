@@ -11,6 +11,7 @@
 #define KEY_ESC     4
 #define KEY_LEFT    5
 #define KEY_RIGHT   6
+#define KEY_SHELL   7
 
 void keyboard_init(void);
 int  keyboard_poll(void);

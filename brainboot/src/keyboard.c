@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "board.h"
 #include "gpio.h"
+#include "keyboard.h"
 
 /* Matrix from imx28-pwsh6.dts */
 static const u32 kbd_in[KBD_IN_BANKS] = {
@@ -11,15 +12,6 @@ static const u32 kbd_out[KBD_OUT_BANKS] = {
     GPIO(2, 16), GPIO(2, 17), GPIO(2, 18), GPIO(2, 19),
     GPIO(2, 20), GPIO(2, 21), GPIO(4, 8),
 };
-
-/* Menu-relevant keys (out, in) */
-#define KEY_NONE    0
-#define KEY_UP      1
-#define KEY_DOWN    2
-#define KEY_ENTER   3
-#define KEY_ESC     4
-#define KEY_LEFT    5
-#define KEY_RIGHT   6
 
 void keyboard_init(void)
 {
@@ -75,6 +67,8 @@ int keyboard_get_timeout(u32 ms)
             if (c == 0x1b || c == 'q' || c == 'Q') return KEY_ESC;
             if (c == 'a' || c == 'A' || c == 'h') return KEY_LEFT;
             if (c == 'd' || c == 'D' || c == 'l') return KEY_RIGHT;
+            if (c == 'c' || c == 'C' || c == '`')
+                return KEY_SHELL;
             if (c >= '1' && c <= '9')
                 return 100 + (c - '0'); /* direct index */
         }
