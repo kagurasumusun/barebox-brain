@@ -6,6 +6,7 @@
 #include "keyboard.h"
 #include "eboot.h"
 #include "ebl.h"
+#include "xport.h"
 
 #ifdef HOST_BUILD
 int shell_run(struct boot_ctx *ctx) { (void)ctx; return ACT_NONE; }
@@ -112,6 +113,9 @@ static void cmd_help(void)
     printf("  rtc                  HW_RTC calendar\n");
     printf("  power                POWER_STS / battery / LRADC\n");
     printf("  beep [ms]            PWM4 buzzer\n");
+    printf("  net [dhcp|tftp FILE] ENET DHCP/TFTP (PHY probe)\n");
+    printf("  usb [serial|rndis]   USB gadget download (host port)\n");
+    printf("  nand                 GPMI NAND IPL probe\n");
     printf("  go ADDR              branch to address\n");
     printf("  reset                watchdog reset\n");
     printf("  poweroff             HW_POWER_RESET.PWD\n");

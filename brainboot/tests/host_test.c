@@ -10,6 +10,7 @@
 #include "bootmenu.h"
 #include "policy.h"
 #include "keyboard.h"
+#include "xport.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -444,6 +445,64 @@ static void test_keyboard_map(void)
     EXPECT(strcmp(brain_key_name(BK_UP), "Up") == 0, "key name Up");
 }
 
+static void test_xport_proto(void)
+{
+    u8 mac[6] = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 };
+    u8 buf[400], ack[8], fcb[64];
+    struct dhcp_lease L;
+    struct rndis_init_cmplt rc;
+    struct fcb_info fi;
+    const u8 *pay = NULL;
+    u32 plen = 0;
+    u16 blk = 0;
+    int n;
+
+    n = dhcp_build_discover(buf, sizeof(buf), mac, 0xAABBCCDD);
+    EXPECT(n > 240, "dhcp discover size");
+    EXPECT(buf[0] == 1 && buf[242] == DHCP_DISCOVER, "dhcp discover type");
+    /* Turn the DISCOVER into a fake OFFER and parse it. */
+    buf[0] = 2;
+    buf[16] = 192; buf[17] = 168; buf[18] = 1; buf[19] = 50;
+    buf[242] = DHCP_OFFER;
+    EXPECT(dhcp_parse(buf, (u32)n, &L) == 0, "dhcp parse offer");
+    EXPECT(L.type == DHCP_OFFER, "dhcp offer type");
+    EXPECT(L.yiaddr == 0xC0A80132u, "dhcp yiaddr");
+
+    n = dhcp_build_request(buf, sizeof(buf), mac, 1, L.yiaddr, 0xC0A80101u);
+    EXPECT(n > 240, "dhcp request size");
+
+    n = tftp_build_rrq(buf, sizeof(buf), "nk.bin");
+    EXPECT(n > 10 && buf[1] == TFTP_RRQ, "tftp rrq");
+    EXPECT(memcmp(buf + 2, "nk.bin", 6) == 0, "tftp rrq name");
+    tftp_build_ack(ack, sizeof(ack), 1);
+    EXPECT(ack[1] == TFTP_ACK && ack[3] == 1, "tftp ack");
+    buf[0] = 0; buf[1] = TFTP_DATA; buf[2] = 0; buf[3] = 7;
+    buf[4] = 'N'; buf[5] = 'K';
+    EXPECT(tftp_parse_data(buf, 6, &blk, &pay, &plen) == 0, "tftp data");
+    EXPECT(blk == 7 && plen == 2 && pay[0] == 'N', "tftp data payload");
+
+    n = rndis_build_init(buf, sizeof(buf), 9);
+    EXPECT(n == 24 && buf[0] == 2, "rndis init");
+    memset(buf, 0, 52);
+    buf[0] = 0x02; buf[1] = 0x00; buf[2] = 0x00; buf[3] = 0x80; /* INIT_C */
+    buf[4] = 52;
+    EXPECT(rndis_parse_init_cmplt(buf, 52, &rc) == 0, "rndis init cmplt");
+    EXPECT(rc.type == RNDIS_INIT_C, "rndis type");
+
+    n = edbg_build_bootme(buf, sizeof(buf), "ED-SH6", mac);
+    EXPECT(n == 48 && buf[0] == 0x11, "edbg bootme");
+    EXPECT(memcmp(buf + 4, "ED-SH6", 6) == 0, "edbg name");
+
+    memset(fcb, 0, sizeof(fcb));
+    fcb[0] = 'F'; fcb[1] = 'C'; fcb[2] = 'B'; fcb[3] = ' ';
+    fcb[20] = 0x00; fcb[21] = 0x08; /* page 2048 */
+    EXPECT(fcb_parse(fcb, sizeof(fcb), &fi) == 0, "fcb parse");
+    EXPECT(fi.valid && fi.page_data_size == 2048, "fcb page size");
+    EXPECT(ip_checksum("\x45\x00\x00\x14\x00\x00\x00\x00\x40\x11\x00\x00"
+                       "\xc0\xa8\x00\x01\xc0\xa8\x00\x02", 20) != 0,
+           "ip checksum nonzero");
+}
+
 int main(void)
 {
     test_bootcfg();
@@ -460,6 +519,7 @@ int main(void)
     test_policy();
     test_config_menu();
     test_keyboard_map();
+    test_xport_proto();
     printf("%s  fails=%d\n", fails ? "SOME TESTS FAILED" : "ALL HOST TESTS PASSED", fails);
     return fails ? 1 : 0;
 }

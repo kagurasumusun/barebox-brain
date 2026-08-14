@@ -34,8 +34,50 @@
 #define IMX_UARTAPP0_BASE       0x8006a000u
 #define IMX_DBGUART_BASE        0x80074000u
 #define IMX_USBPHY0_BASE        0x8007c000u
+#define IMX_USBPHY1_BASE        0x8007e000u
 #define IMX_USB0_BASE           0x80080000u
+#define IMX_USB1_BASE           0x80090000u
+#define IMX_ENET0_BASE          0x800f0000u
 #define IMX_WATCHDOG_BASE       IMX_RTC_BASE
+
+/* ChipIdea USB (EHCI + device). qemu-brain hw/usb/mxs_usbctrl.c */
+#define USB_ID                  0x000
+#define USB_HWDEVICE            0x00c
+#define USB_USBCMD              0x140
+#define USB_USBSTS              0x144
+#define USB_PORTSC1             0x184
+#define USB_OTGSC               0x1a4
+#define USB_USBMODE             0x1a8
+#define USBCMD_RST              (1u << 1)
+#define USBMODE_CM_MASK         3u
+#define USBMODE_CM_IDLE         0u
+#define USBMODE_CM_DEVICE       2u
+#define USBMODE_CM_HOST         3u
+#define PORTSC_CCS              (1u << 0)
+#define OTGSC_ID                (1u << 8)
+
+/* i.MX28 ENET / FEC */
+#define FEC_IEVENT              0x004
+#define FEC_IMASK               0x008
+#define FEC_ECNTRL              0x024
+#define FEC_MII_DATA            0x040
+#define FEC_MII_SPEED           0x044
+#define FEC_R_CNTRL             0x084
+#define FEC_ECNTRL_RESET        0x00000001u
+#define FEC_ECNTRL_ETHER_EN     0x00000002u
+#define FEC_IEVENT_MII          0x00800000u
+#define FEC_MII_DATA_ST         0x40000000u
+#define FEC_MII_DATA_OP_RD      0x20000000u
+#define FEC_MII_DATA_TA         0x00020000u
+#define FEC_MII_DATA_RA_SHIFT   18
+#define FEC_MII_DATA_PA_SHIFT   23
+#define CLKCTRL_ENET_CLKGATE    (1u << 31)
+
+/* GPMI NAND (pins are LCD GPIO on this board) */
+#define HW_GPMI_CTRL0           0x000
+#define HW_GPMI_VERSION         0x0d0
+#define GPMI_CTRL0_SFTRST       (1u << 31)
+#define GPMI_CTRL0_CLKGATE      (1u << 30)
 
 /* CLKCTRL (i.MX28) */
 #define HW_CLKCTRL_PLL0CTRL0    0x000

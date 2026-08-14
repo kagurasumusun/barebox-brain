@@ -7,6 +7,7 @@
 #include "shell.h"
 #include "bootmenu.h"
 #include "eboot.h"
+#include "xport.h"
 
 static int wait_key(int aborted)
 {
