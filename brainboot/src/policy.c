@@ -48,18 +48,9 @@ void policy_announce_devinfo(const struct boot_ctx *ctx)
 void policy_announce_bootcfg(const struct boot_ctx *ctx, int from_sd, int ok)
 {
     (void)ctx;
-    if (from_sd && ok) {
-        printf("Find Boot Config File!!\n");
+    if (ok)
         printf("Boot Config OK!!\n");
-        return;
-    }
-    if (!from_sd && ok) {
-        printf("Boot Config OK!!\n");
-        return;
-    }
-    if (from_sd && !ok)
-        printf("SD BootConfig present but invalid\n");
-    printf("Check Card BOOT\n");
+    (void)from_sd;
 }
 
 void policy_announce_action(int act)
@@ -67,17 +58,16 @@ void policy_announce_action(int act)
     switch (act) {
     case ACT_DIAGOS:
         printf("Fast Diag Boot!!!\n");
-        printf("Reading NK image to SDHC ...\n");
         break;
     case ACT_WINCE:
-        printf("Reading NK image to SDHC ...\n");
+        printf("INFO: Check Card BOOT\n");
         break;
     case ACT_NK2:
-        printf("Reading NK image to SDHC ...\n");
+        printf("INFO: Check Card BOOT\n");
         break;
     case ACT_SDEXE:
-        printf("Check Card BOOT\n");
-        printf("Downloading NK RAM image\n");
+        printf("INFO: Check Card BOOT\n");
+        printf("Enable Card Boot!!!\n");
         break;
     case ACT_LINUX:
         printf("Boot Linux from SD\n");

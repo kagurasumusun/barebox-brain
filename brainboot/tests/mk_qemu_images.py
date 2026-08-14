@@ -62,6 +62,16 @@ def make_emmc(path: pathlib.Path, flags: int = 0) -> None:
     put32(img, 446 + 12, (size // 512) - 1)
     img[512 * 2 : 512 * 3] = make_bootcfg(flags)
     img[512 * 4 : 512 * 5] = make_devinfo()
+    img[512 * 16] = 0x80
+    img[512 * 16 + 4] = ord("7")
+    img[512 * 16 + 5] = ord("0")
+    img[512 * 17 + 0] = ord("7")
+    img[512 * 17 + 1] = ord("0")
+    img[512 * 18 + 0] = ord("7")
+    img[512 * 18 + 1] = ord("0")
+    img[512 * 64 + 0] = ord("7")
+    img[512 * 64 + 1] = ord("0")
+    img[512 * 71 : 512 * 71 + 30] = b"SHARP E-DICTIONARY CHARGE INFO"
     # Fake NK at 0x120000: ARM `b .`
     nk = 0x120000
     img[nk : nk + 4] = struct.pack("<I", 0xEAFFFFFE)

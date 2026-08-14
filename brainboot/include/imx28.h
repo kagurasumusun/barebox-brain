@@ -62,11 +62,15 @@
 #define HW_CLKCTRL_CLKSEQ       0x1d0
 #define HW_CLKCTRL_RESET        0x1e0
 
+#define CLKCTRL_CLKSEQ_BYPASS_PIX    (1u << 1)
 #define CLKCTRL_CLKSEQ_BYPASS_SSP0   (1u << 3)
 #define CLKCTRL_CLKSEQ_BYPASS_SSP1   (1u << 4)
 #define CLKCTRL_XTAL_PWM_CLK24M_GATE (1u << 29)
 #define CLKCTRL_SSP_CLKGATE          (1u << 31)
 #define CLKCTRL_SSP_BUSY             (1u << 29)
+#define CLKCTRL_PIX_CLKGATE          (1u << 31)
+#define CLKCTRL_PIX_BUSY             (1u << 29)
+#define CLKCTRL_PIX_DIV_MASK         0xfffu
 
 /* PINCTRL */
 #define HW_PINCTRL_CTRL         0x000

@@ -34,11 +34,18 @@ struct boot_ctx {
     struct boot_config bc;
     struct boot_menu bm;
     struct dev_info di;
+    struct charge_info ci;
+    struct boot_status bs;
     struct device_ident ident;
     struct bb_config cfg;
     int ocram_ok;
     int dram_ok;
     int key_held;
+    int factory_ok;
+    int user_ok;
+    int develop_ok;
+    int system_ok;
+    int resume;
     u32 cpu_hz;
     u32 ocotp_lock;
     u32 rtc_seconds;

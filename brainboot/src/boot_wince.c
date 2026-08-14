@@ -31,9 +31,10 @@ static u32 detect_payload(const u8 *buf, u32 len, const u8 **body, u32 *body_len
         return hdr.load_addr ? hdr.load_addr : NK_LOAD_PHYS;
     }
     if (ecec_probe(buf, len, &hint) == 0) {
+        u32 actual = ecec_image_size(buf, len, len);
         *body = buf;
-        *body_len = len;
-        printf("ECEC image %u bytes toc=0x%x\n", len, hint);
+        *body_len = actual ? actual : len;
+        printf("ECEC image %u bytes toc=0x%x\n", *body_len, hint);
         return NK_LOAD_PHYS;
     }
     /* Raw image: accept if it starts with an ARM branch (ea......) */
@@ -88,6 +89,14 @@ int boot_wince_from_mem(const u8 *buf, u32 len)
         memcpy((void *)STAGE_PHYS, body, blen);
         body = (const u8 *)STAGE_PHYS;
     }
+    {
+        int patched = nk_patch_fmd((u8 *)body, blen);
+        if (patched >= 0)
+            printf("FMD region table at 0x%x\n", (u32)patched);
+    }
+    printf("OEMLaunch called PhysAddress 0x%x.\n", dest);
+    printf("Download successful!  Jumping to image at 0x0 (physical 0x%x)...\n",
+           dest);
     printf("WinCE jump dest=0x%x size=%u\n", dest, blen);
     copy_and_jump(STAGE_PHYS, dest, ALIGN_UP(blen, 4), dest);
     return -3; /* not reached */

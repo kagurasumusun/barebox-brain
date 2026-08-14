@@ -9,7 +9,7 @@
 #include "ident.h"
 #include "bootmenu.h"
 #include "ebl.h"
-#include "i2c.h"
+#include "eboot.h"
 
 extern int menu_run(struct boot_ctx *ctx);
 
@@ -17,68 +17,7 @@ extern int menu_run(struct boot_ctx *ctx);
 int main(void) { return 0; }
 #else
 
-static int fat_try_find(struct fat_fs *sd, const char *name, struct fat_file *f)
-{
-    if (!sd || !sd->ready || !name || !name[0])
-        return -1;
-    return fat_find(sd, name, f);
-}
-
-static void load_bootcfg(struct boot_ctx *ctx)
-{
-    u8 sec[512];
-    struct fat_file f;
-    int from_sd = 0, ok = 0;
-
-    memset(&ctx->bc, 0, sizeof(ctx->bc));
-
-    if (fat_try_find(&ctx->sdfat, ctx->ident.cfg_name, &f) == 0 ||
-        fat_try_find(&ctx->sdfat, SD_BOOTCFG_NAME, &f) == 0) {
-        from_sd = 1;
-        if (fat_read(&ctx->sdfat, &f, sec, 512) >= 48 &&
-            bootcfg_parse(sec, &ctx->bc) == 0)
-            ok = 1;
-    }
-    if (!ok && ctx->emmc.ready &&
-        mmc_read(&ctx->emmc, EMMC_BOOTCFG_LBA, 1, sec) == 0) {
-        from_sd = 0;
-        if (bootcfg_parse(sec, &ctx->bc) == 0)
-            ok = 1;
-    }
-    policy_announce_bootcfg(ctx, from_sd, ok);
-}
-
-static void load_devinfo(struct boot_ctx *ctx)
-{
-    u8 sec[512];
-    memset(&ctx->di, 0, sizeof(ctx->di));
-    if (ctx->emmc.ready && mmc_read(&ctx->emmc, EMMC_DEVINFO_LBA, 1, sec) == 0) {
-        int prc = devinfo_parse(sec, &ctx->di);
-        if (prc != 0)
-            printf("DevInfo parse rc=%d magic16='%c%c%c%c' sum=%x\n",
-                   prc, sec[0], sec[1], sec[2], sec[3], sum16(sec, 0x2c));
-    } else if (ctx->emmc.ready) {
-        printf("DevInfo: eMMC read LBA 4 failed\n");
-    }
-    policy_announce_devinfo(ctx);
-    printf("%s\n", ctx->ident.banner);
-}
-
-static void load_bootmenu(struct boot_ctx *ctx)
-{
-    memset(&ctx->bm, 0, sizeof(ctx->bm));
-    if (bootmenu_load(&ctx->sdfat, &ctx->bm) == 0)
-        printf("BOOTMENU.BIN flags=0x%x cookie=0x%x\n",
-               ctx->bm.flags, ctx->bm.cookie);
-}
-
-static void ensure_lcd(void)
-{
-    if (!lcd_ready())
-        lcd_init();
-}
-
-static int execute(struct boot_ctx *ctx, int act)
+static void execute(struct boot_ctx *ctx, int act)
 {
     const char *exe;
 
@@ -87,11 +26,8 @@ static int execute(struct boot_ctx *ctx, int act)
     case ACT_WINCE:
         if (lcd_ready())
             ui_message(ctx, "Boot WinCE", "Reading NK from eMMC 0x120000 ...");
-        printf("Copying NK image to RAM 0xa0200000\n");
-        if (boot_wince_from_emmc(&ctx->emmc, EMMC_NK_OFFSET, 0x01000000u))
-            printf("WinCE boot failed\n");
-        else
-            printf("Jumping to image\n");
+        if (boot_wince_from_emmc(&ctx->emmc, EMMC_NK_OFFSET, 0))
+            printf("ERROR: Failed to load OS image from NAND.\n");
         break;
     case ACT_LINUX:
         if (lcd_ready())
@@ -104,36 +40,29 @@ static int execute(struct boot_ctx *ctx, int act)
     case ACT_DIAGOS:
         if (lcd_ready())
             ui_message(ctx, "Boot DiagOS", "Reading DiagOS 0x4120000 ...");
-        printf("DIAG dwActualLength=[0xb9437c]\n");
-        printf("Copying NK image to RAM 0xa0200000\n");
+        printf("INFO: DIAG dwActualLength = [0x%x]\n", EMMC_DIAGOS_SIZE);
         if (boot_wince_from_emmc(&ctx->emmc, EMMC_DIAGOS_OFFSET, EMMC_DIAGOS_SIZE))
-            printf("DiagOS boot failed\n");
-        else
-            printf("Jumping to image\n");
+            printf("ERROR: Failed to load OS image from NAND.\n");
         break;
     case ACT_SDEXE:
         exe = ctx->ident.exe_name[0] ? ctx->ident.exe_name : SD_BOOTEXE_NAME;
         if (lcd_ready())
             ui_message(ctx, "Boot SD EXE", exe);
         if (!ctx->sdfat.ready) {
-            printf("SD EXE boot failed\n");
+            printf("ERROR: Failed to load OS image from SD/MMC.\n");
             break;
         }
+        printf("INFO: Downloading NK RAM image.\n");
         if (boot_wince_from_sd(&ctx->sdfat, exe) != 0 &&
             (strcmp(exe, SD_BOOTEXE_NAME) == 0 ||
              boot_wince_from_sd(&ctx->sdfat, SD_BOOTEXE_NAME) != 0))
-            printf("SD EXE boot failed\n");
-        else
-            printf("Jumping to image\n");
+            printf("ERROR: Failed to load OS image from SD/MMC.\n");
         break;
     case ACT_NK2:
         if (lcd_ready())
             ui_message(ctx, "Boot NK2", "Reading NK2 0x2120000 ...");
-        printf("Copying NK image to RAM 0xa0200000\n");
-        if (boot_wince_from_emmc(&ctx->emmc, EMMC_NK2_OFFSET, 0x01000000u))
-            printf("NK2 boot failed\n");
-        else
-            printf("Jumping to image\n");
+        if (boot_wince_from_emmc(&ctx->emmc, EMMC_NK2_OFFSET, 0))
+            printf("ERROR: Failed to load OS image from NAND.\n");
         break;
     case ACT_POWEROFF:
         if (lcd_ready())
@@ -145,73 +74,96 @@ static int execute(struct boot_ctx *ctx, int act)
         board_reboot();
         break;
     case ACT_SHELL:
-        return shell_run(ctx);
+        (void)shell_run(ctx);
+        break;
     default:
         printf("unknown action %d\n", act);
         break;
     }
-    return ACT_NONE;
 }
 
 int main(void)
 {
     struct boot_ctx ctx;
+    struct ebl_state es;
+    struct resume_info resume;
+    struct ebl_power pwr;
     int act;
     int k;
 
     memset(&ctx, 0, sizeof(ctx));
     ident_clear(&ctx.ident);
     uart_init();
-    printf("\n\n======== brainboot v%s ========\n", BB_VERSION);
+    printf("\nMicrosoft Windows CE Bootloader Common Library Version 1.4 Built Aug  6 2019 14:34:18\n");
+    printf("======== brainboot v%s ========\n", BB_VERSION);
 
     board_early_init();
-    {
-        struct ebl_state es;
-        ebl_oem_init(&es);
-        ebl_print_state(&es);
-        ctx.rtc_seconds = es.rtc.seconds;
-        ctx.power_sts = es.pwr.sts;
-        ctx.edna2_doorbell = es.edna2_doorbell;
-        ctx.i2c0_ctrl = es.i2c0_ctrl;
-    }
+    ebl_oem_init(&es);
+    ebl_print_state(&es);
+    ctx.rtc_seconds = es.rtc.seconds;
+    ctx.power_sts = es.pwr.sts;
+    ctx.edna2_doorbell = es.edna2_doorbell;
+    ctx.i2c0_ctrl = es.i2c0_ctrl;
     ctx.cpu_hz = board_cpu_hz();
     ctx.ocotp_lock = board_ocotp_lock();
     ctx.ocram_ok = board_probe_ocram();
     ctx.dram_ok = board_probe_dram();
     ctx.dram_bytes = ident_dram_bytes();
-    printf("chipid=0x%x cpu=%u Hz ocram=%d dram=%d dram_bytes=%u\n",
-           board_chipid(), ctx.cpu_hz, ctx.ocram_ok, ctx.dram_ok,
-           ctx.dram_bytes);
-    printf("lock=0x%x pwr=0x%x rtc=%u edna2=0x%x i2c0=0x%x\n",
-           ctx.ocotp_lock, ctx.power_sts, ctx.rtc_seconds,
-           ctx.edna2_doorbell, ctx.i2c0_ctrl);
+
+    ebl_power_read(&pwr);
+    if (!pwr.vbus)
+        printf("USB is not detected\n");
+    else
+        printf("POARIC USB Connect\n");
 
     keyboard_init();
+    k = keyboard_poll();
+    printf("CheckWakeupKey() = %x\n", k);
+    if (k == KEY_ENTER || k == KEY_ESC)
+        ctx.key_held = 1;
+
+    ctx.resume = eboot_check_resume(&resume);
+    if (ctx.resume)
+        printf("***************CheckResumeInfo()=TRUE\n");
+    else
+        printf("Not Resume !!!\n");
+
+    printf("Init DRIVER_GLOBAL_WORK size=496\n");
     bb_config_defaults(&ctx.cfg);
 
+    printf("OEMPlatformInit\n");
     if (mmc_init(&ctx.emmc, MMC_PORT_EMMC) != 0)
-        printf("eMMC init failed\n");
+        printf("WARNING: OEMPlatformInit: Failed to initialize SDHC device.\n");
     if (mmc_init(&ctx.sd, MMC_PORT_SD) != 0)
-        printf("SD init failed\n");
+        printf("SDInterface_Init 1 Failed\n");
+    eboot_announce_mmc(&ctx);
 
     if (ctx.sd.ready) {
         if (fat_mount(&ctx.sdfat, &ctx.sd, 0) != 0)
-            printf("SD FAT mount failed\n");
+            printf("SDMMCDownload : FATInitDisk Fail\n");
         else
             printf("SD FAT%s mounted\n", ctx.sdfat.fat32 ? "32" : "16");
     }
 
-    load_devinfo(&ctx);
-    load_bootcfg(&ctx);
-    load_bootmenu(&ctx);
+    eboot_load_records(&ctx);
+    eboot_display_init(&ctx);
+
+    printf("Batt Detect\n");
+    printf("Cold Boot OS\n");
+    eboot_beep();
+    ebl_power_read(&pwr);
+    printf("Battery Voltage = %u\n", pwr.batt_mv);
+    printf("System ready!\n");
+
+    memset(&ctx.bm, 0, sizeof(ctx.bm));
+    if (bootmenu_load(&ctx.sdfat, &ctx.bm) == 0)
+        printf("BOOTMENU.BIN flags=0x%x cookie=0x%x\n",
+               ctx.bm.flags, ctx.bm.cookie);
     if (bb_config_load(&ctx.sdfat, &ctx.cfg) == 0)
         printf("loaded BRAINBOO.CFG autoboot=%u default=%s menu=%d\n",
                ctx.cfg.autoboot, bb_default_name(ctx.cfg.default_target),
                ctx.cfg.menu_force);
 
-    k = keyboard_poll();
-    if (k == KEY_ENTER || k == KEY_ESC)
-        ctx.key_held = 1;
     if (uart_tstc()) {
         (void)uart_getc();
         ctx.key_held = 1;
@@ -224,20 +176,20 @@ int main(void)
             execute(&ctx, act);
     } else if (policy_want_menu(&ctx)) {
         printf("BOOTMENU / Engineer / key: showing UI\n");
-        ensure_lcd();
         act = menu_run(&ctx);
-        while (act == ACT_SHELL)
-            act = execute(&ctx, act);
+        while (act == ACT_SHELL) {
+            execute(&ctx, act);
+            act = menu_run(&ctx);
+        }
         if (act)
             execute(&ctx, act);
     } else {
         act = policy_silent_action(&ctx);
-        printf("silent boot action=%d\n", act);
         if (act)
             execute(&ctx, act);
     }
 
-    printf("returned from boot path, hanging.\n");
+    printf("SpinForever...\n");
     for (;;)
         ;
     return 0;

@@ -34,8 +34,22 @@ void clock_init(void)
     /* PWM 24 MHz from XTAL */
     writel_clr(CLKCTRL_XTAL_PWM_CLK24M_GATE, ccm + HW_CLKCTRL_XTAL);
 
-    /* LCDIF clock ungated */
-    writel_clr(1u << 31, ccm + HW_CLKCTRL_LCD);
+    writel_clr(CLKCTRL_PIX_CLKGATE, ccm + HW_CLKCTRL_LCD);
+}
+
+void eboot_setup_pixclock(void)
+{
+    u32 ccm = IMX_CLKCTRL_BASE;
+    u32 cur, guard;
+
+    printf("EBOOT: EBOOT_SetupPIXClock-- \n");
+    writel_clr(CLKCTRL_PIX_CLKGATE, ccm + HW_CLKCTRL_LCD);
+    cur = readl(ccm + HW_CLKCTRL_LCD);
+    writel((cur & ~CLKCTRL_PIX_DIV_MASK) | 25u, ccm + HW_CLKCTRL_LCD);
+    guard = 1000000;
+    while ((readl(ccm + HW_CLKCTRL_LCD) & CLKCTRL_PIX_BUSY) && --guard)
+        ;
+    writel_clr(CLKCTRL_CLKSEQ_BYPASS_PIX, ccm + HW_CLKCTRL_CLKSEQ);
 }
 
 u32 board_chipid(void)

@@ -23,6 +23,7 @@ void lcd_flush(void);
 int  lcd_ready(void);
 
 void splash_draw(void);
+void splash_second(const char *model);
 void splash_banner(const char *line2);
 
 #endif

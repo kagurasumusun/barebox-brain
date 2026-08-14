@@ -145,3 +145,120 @@ int ecec_probe(const u8 *buf, u32 len, u32 *load_hint)
         *load_hint = r32le(buf + 0x44);
     return 0;
 }
+
+u32 ecec_image_size(const u8 *buf, u32 len, u32 max_size)
+{
+    u32 hinted, last, i;
+
+    if (ecec_probe(buf, len, NULL) != 0)
+        return 0;
+    hinted = r32le(buf + 0x48);
+    if (hinted < 0x1000u || hinted > max_size)
+        hinted = 0x100000u;
+    if (hinted > len)
+        hinted = len;
+    last = hinted;
+    for (i = hinted; i < len && i < max_size; i++) {
+        if (buf[i])
+            last = i + 1;
+    }
+    return last;
+}
+
+int nk_patch_fmd(u8 *image, u32 len)
+{
+    static const u32 start_def[6] = {
+        0x00027800u, 0x00047800u, 0x00092000u,
+        0x00047800u, 0x000f6800u, 0x00027000u
+    };
+    static const u32 size_def[6] = {
+        0x00020000u, 0x00000000u, 0x00064800u,
+        0x0004a800u, 0xffffffffu, 0x00000000u
+    };
+    u32 off;
+
+    if (len < 48)
+        return -1;
+    /* MAIN NK on this eMMC keeps the table at 0x95b03c; repaired image
+     * already has EBOOT's runtime patch applied. */
+    if (len > 0x95b03cu + 48u && r32le(image + 0x95b03c) == start_def[0]) {
+        if (r32le(image + 0x95b03c + 8) == 0x0009200fu &&
+            r32le(image + 0x95b03c + 16) == 0x0018c809u)
+            return (int)0x95b03cu;
+        off = 0x95b03cu;
+    } else {
+        off = 0;
+    }
+    for (; off + 48 <= len; off += 4) {
+        int i, ok = 1;
+        for (i = 0; i < 6; i++) {
+            if (r32le(image + off + i * 4) != start_def[i]) {
+                ok = 0;
+                break;
+            }
+        }
+        if (!ok)
+            continue;
+        for (i = 0; i < 6; i++) {
+            if (r32le(image + off + 0x18 + i * 4) != size_def[i]) {
+                ok = 0;
+                break;
+            }
+        }
+        if (!ok)
+            continue;
+        image[off + 8]  = 0x0f;
+        image[off + 9]  = 0x20;
+        image[off + 10] = 0x09;
+        image[off + 11] = 0x00;
+        image[off + 16] = 0x09;
+        image[off + 17] = 0xc8;
+        image[off + 18] = 0x8c;
+        image[off + 19] = 0x01;
+        image[off + 0x18 + 16] = 0x40;
+        image[off + 0x18 + 17] = 0x17;
+        image[off + 0x18 + 18] = 0xac;
+        image[off + 0x18 + 19] = 0x00;
+        return (int)off;
+    }
+    return -1;
+}
+
+int chargeinfo_parse(const u8 sec[512], struct charge_info *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (memcmp(sec, CHARGE_MAGIC, 30) != 0)
+        return -1;
+    memcpy(out->magic, sec, 32);
+    out->start_count[0]      = r32le(sec + 0x20);
+    out->complete_count[0]   = r32le(sec + 0x24);
+    out->temp_error_count[0] = r32le(sec + 0x28);
+    out->total_time[0]       = r32le(sec + 0x2c);
+    out->start_count[1]      = r32le(sec + 0x30);
+    out->complete_count[1]   = r32le(sec + 0x34);
+    out->temp_error_count[1] = r32le(sec + 0x38);
+    out->total_time[1]       = r32le(sec + 0x3c);
+    out->valid = 1;
+    return 0;
+}
+
+int bootstatus_parse(const u8 sec[512], struct boot_status *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (memcmp(sec, BOOTSTATUS_MAGIC, 30) != 0)
+        return -1;
+    memcpy(out->magic, sec, 32);
+    out->status = r32le(sec + 0x20);
+    out->valid = 1;
+    return 0;
+}
+
+int factory_setting_ok(const u8 sec[512])
+{
+    return sec[0] == 0x80;
+}
+
+int packed70_setting_ok(const u8 sec[512])
+{
+    return sec[0] == '7' && sec[1] == '0';
+}

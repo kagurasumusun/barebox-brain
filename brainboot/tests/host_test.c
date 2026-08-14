@@ -71,6 +71,56 @@ static void test_b000ff(void)
     EXPECT(b000ff_verify(&hdr, body) != 0, "b000ff detects corruption");
 }
 
+static void test_charge_and_fmd(void)
+{
+    u8 sec[512], img[64];
+    struct charge_info ci;
+    static const u32 start_def[6] = {
+        0x00027800u, 0x00047800u, 0x00092000u,
+        0x00047800u, 0x000f6800u, 0x00027000u
+    };
+    static const u32 size_def[6] = {
+        0x00020000u, 0x00000000u, 0x00064800u,
+        0x0004a800u, 0xffffffffu, 0x00000000u
+    };
+    int i;
+
+    memset(sec, 0, 512);
+    memcpy(sec, CHARGE_MAGIC, 30);
+    sec[0x20] = 0xb0; sec[0x21] = 0x01;
+    sec[0x24] = 0x04;
+    sec[0x2c] = 0x7b; sec[0x2d] = 0xa4; sec[0x2e] = 0x01;
+    sec[0x30] = 0x0a;
+    sec[0x34] = 0x04;
+    sec[0x3c] = 0x5c; sec[0x3d] = 0xda;
+    EXPECT(chargeinfo_parse(sec, &ci) == 0, "chargeinfo parse");
+    EXPECT(ci.start_count[0] == 432, "charge start[0]");
+    EXPECT(ci.total_time[0] == 107643, "charge time[0]");
+    EXPECT(ci.start_count[1] == 10, "charge start[1]");
+    EXPECT(ci.total_time[1] == 55900, "charge time[1]");
+
+    memset(sec, 0, 512);
+    sec[0] = 0x80;
+    EXPECT(factory_setting_ok(sec) == 1, "factory flag 0x80");
+    sec[0] = '7'; sec[1] = '0';
+    EXPECT(packed70_setting_ok(sec) == 1, "packed70");
+
+    memset(img, 0, sizeof(img));
+    for (i = 0; i < 6; i++) {
+        img[i * 4 + 0] = (u8)start_def[i];
+        img[i * 4 + 1] = (u8)(start_def[i] >> 8);
+        img[i * 4 + 2] = (u8)(start_def[i] >> 16);
+        img[i * 4 + 3] = (u8)(start_def[i] >> 24);
+        img[0x18 + i * 4 + 0] = (u8)size_def[i];
+        img[0x18 + i * 4 + 1] = (u8)(size_def[i] >> 8);
+        img[0x18 + i * 4 + 2] = (u8)(size_def[i] >> 16);
+        img[0x18 + i * 4 + 3] = (u8)(size_def[i] >> 24);
+    }
+    EXPECT(nk_patch_fmd(img, sizeof(img)) == 0, "FMD patch default table");
+    EXPECT(img[8] == 0x0f && img[10] == 0x09, "FMD start[2]");
+    EXPECT(img[16] == 0x09 && img[18] == 0x8c && img[19] == 0x01, "FMD start[4]");
+}
+
 static void test_ecec(void)
 {
     u8 buf[0x80];
@@ -331,6 +381,7 @@ int main(void)
 {
     test_bootcfg();
     test_devinfo();
+    test_charge_and_fmd();
     test_b000ff();
     test_ecec();
     test_mbr();

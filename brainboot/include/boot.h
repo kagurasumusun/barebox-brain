@@ -5,8 +5,10 @@
 #include "mmc.h"
 #include "fat.h"
 
-#define BOOTCFG_MAGIC   "SHARP E-DICTIONARY BOOT CONFIG"
-#define DEVINFO_MAGIC   "SHARP E-DICTIONARY DEV INFO"
+#define BOOTCFG_MAGIC    "SHARP E-DICTIONARY BOOT CONFIG"
+#define DEVINFO_MAGIC    "SHARP E-DICTIONARY DEV INFO"
+#define CHARGE_MAGIC     "SHARP E-DICTIONARY CHARGE INFO"
+#define BOOTSTATUS_MAGIC "SHARP E-DICTIONARY BOOT STATUS"
 
 struct boot_config {
     char magic[32];
@@ -49,6 +51,28 @@ int  b000ff_verify(const struct b000ff_hdr *hdr, const u8 *payload);
 int  b000ff_build(u32 load, const u8 *payload, u32 size, u8 *out, u32 *out_len);
 
 int  ecec_probe(const u8 *buf, u32 len, u32 *load_hint);
+u32  ecec_image_size(const u8 *buf, u32 len, u32 max_size);
+int  nk_patch_fmd(u8 *image, u32 len);
+
+struct charge_info {
+    char magic[32];
+    u32  start_count[2];
+    u32  complete_count[2];
+    u32  temp_error_count[2];
+    u32  total_time[2];
+    int  valid;
+};
+
+struct boot_status {
+    char magic[32];
+    u32  status;
+    int  valid;
+};
+
+int  chargeinfo_parse(const u8 sec[512], struct charge_info *out);
+int  bootstatus_parse(const u8 sec[512], struct boot_status *out);
+int  factory_setting_ok(const u8 sec[512]);
+int  packed70_setting_ok(const u8 sec[512]);
 
 int  boot_wince_from_emmc(struct mmc_dev *emmc, u32 offset, u32 size_hint);
 int  boot_wince_from_mem(const u8 *buf, u32 len);

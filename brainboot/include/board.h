@@ -39,13 +39,20 @@
 #define EMMC_DEVINFO_LBA        4u
 #define EMMC_BOOTCFG_LBA        2u
 #define EMMC_FACTORY_LBA        16u
+#define EMMC_USER_LBA           17u
+#define EMMC_DEVELOP_LBA        18u
+#define EMMC_SYSTEM_LBA         64u
+#define EMMC_CHARGE_LBA         71u
+#define EMMC_BOOTSTATUS_LBA     8u
 #define EMMC_NK_OFFSET          0x00120000u
+#define EMMC_NK_SLOT            0x02000000u
 #define EMMC_NK2_OFFSET         0x02120000u
 #define EMMC_DIAGOS_OFFSET      0x04120000u
 #define EMMC_DIAGOS_SIZE        0x00B9437Cu
 #define EMMC_BOOT_PART_TYPE     0x53u
 
 #define SD_BOOTCFG_NAME         "EDSH6CFG.BIN"
+#define SD_DEVINFO_NAME         "EDSH6DEVINFO.BIN"
 #define SD_BOOTEXE_NAME         "EDSH6EXE.BIN"
 #define SD_ZIMAGE_NAME          "ZIMAGE"
 #define SD_DTB_NAME             "IMX28-PWSH6.DTB"
@@ -53,7 +60,7 @@
 #define SD_BBCONF_NAME          "BRAINBOO.CFG"
 #define SD_BOOTMENU_NAME        "BOOTMENU.BIN"
 
-#define BB_VERSION              "1.3.0"
+#define BB_VERSION              "1.4.0"
 
 #define LCD_WIDTH               854
 #define LCD_HEIGHT              480
@@ -90,6 +97,7 @@ void board_early_init(void);
 void board_reboot(void);
 void board_poweroff(void);
 void clock_init(void);
+void eboot_setup_pixclock(void);
 void pinmux_init(void);
 u32  board_chipid(void);
 u32  board_cpu_hz(void);

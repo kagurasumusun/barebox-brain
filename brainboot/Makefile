@@ -18,7 +18,7 @@ C_SRC := src/string.c src/delay.c src/uart.c src/gpio.c \
          src/boot_wince.c src/boot_linux.c src/font.c src/lcd.c src/splash.c \
          src/keyboard.c src/menu.c src/main.c src/ui.c src/config.c \
          src/ident.c src/bootmenu.c src/policy.c src/shell.c \
-         src/i2c.c src/ebl.c
+         src/i2c.c src/ebl.c src/eboot.c
 S_SRC := src/start.S
 
 C_OBJ := $(patsubst src/%.c,build/%.o,$(C_SRC))
