@@ -129,7 +129,11 @@ void lcd_init(void)
     lcd_cmd(0x2c);
 
     /* Switch LCDIF to master DMA-from-FB for subsequent flushes. */
+    /* WORD_LENGTH=0 → 16 bpp. Do not set DATA_FORMAT_16: qemu-brain
+     * treats that bit as ARGB1555, not RGB565. */
     writel_set(LCDIF_CTRL_MASTER | LCDIF_CTRL_DATA_SELECT, lcd + HW_LCDIF_CTRL);
+    writel_clr(LCDIF_CTRL_DATA_FORMAT_16_BIT | LCDIF_CTRL_DATA_FORMAT_18_BIT |
+               LCDIF_CTRL_DATA_FORMAT_24_BIT, lcd + HW_LCDIF_CTRL);
     writel(FRAMEBUFFER_PHYS, lcd + HW_LCDIF_CUR_BUF);
     writel(FRAMEBUFFER_PHYS, lcd + HW_LCDIF_NEXT_BUF);
     writel(LCDIF_TRANSFER_COUNT(LCD_WIDTH, LCD_HEIGHT), lcd + HW_LCDIF_TRANSFER_COUNT);

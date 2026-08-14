@@ -144,19 +144,21 @@
 #define SSP_TIMING_CLOCK_RATE(x)   ((x) & 0xffu)
 
 /* LCDIF */
+/* i.MX28 RM ch.34 / qemu-brain hw/display/mxs_lcdif.c (offset >> 4). */
 #define HW_LCDIF_CTRL           0x000
 #define HW_LCDIF_CTRL1          0x010
-#define HW_LCDIF_TRANSFER_COUNT 0x020
-#define HW_LCDIF_CUR_BUF        0x030
-#define HW_LCDIF_NEXT_BUF       0x040
+#define HW_LCDIF_CTRL2          0x020
+#define HW_LCDIF_TRANSFER_COUNT 0x030
+#define HW_LCDIF_CUR_BUF        0x040
+#define HW_LCDIF_NEXT_BUF       0x050
 #define HW_LCDIF_TIMING         0x060
 #define HW_LCDIF_VDCTRL0        0x070
 #define HW_LCDIF_VDCTRL1        0x080
 #define HW_LCDIF_VDCTRL2        0x090
 #define HW_LCDIF_VDCTRL3        0x0a0
 #define HW_LCDIF_VDCTRL4        0x0b0
-#define HW_LCDIF_DATA           0x1b0
-#define HW_LCDIF_STAT           0x1d0
+#define HW_LCDIF_DATA           0x180
+#define HW_LCDIF_STAT           0x1b0
 
 #define LCDIF_CTRL_SFTRST           (1u << 31)
 #define LCDIF_CTRL_CLKGATE          (1u << 30)
